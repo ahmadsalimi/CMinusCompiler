@@ -23,6 +23,11 @@ class State:
     def add_transition(self, transition: 'Transition'):
         self.transitions.append(transition)
 
+    def transition(self, char: str) -> 'State':
+        for t in self.transitions:
+            if t.matches(char):
+                return t.target
+
 
 class FinalState(State):
     def __init__(self, id: int, token_type_resolver: Callable[[str], TokenType]):

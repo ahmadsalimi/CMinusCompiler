@@ -1,20 +1,14 @@
 from typing import Callable
+from pprint import pprint
 
 from cminus.scanner.dfa import DFA, State, FinalState, Transition, TokenType
+from cminus.scanner.error import ScannerError
+from cminus.scanner.scanner import Scanner, KEYWORDS
 
 
 def create_cminus_dfa() -> DFA:
     dfa = DFA(State(1))
-    KEYWORDS = set([
-        'if',
-        'else',
-        'void',
-        'int',
-        'repeat',
-        'break',
-        'until',
-        'return'
-    ])
+    
 
     def default_resolver(token_type: TokenType) -> Callable[[str], TokenType]:
         return lambda _: token_type
@@ -58,29 +52,25 @@ def create_cminus_dfa() -> DFA:
 
     return dfa
 
+
+INPUT_FILE = 'input.txt'
+
+
 if __name__ == '__main__':
+    with open(INPUT_FILE, 'r') as f:
+        code = f.read()
+
     dfa = create_cminus_dfa()
+    scanner = Scanner(dfa, code)
 
-    while True:
-        token = input('> ')
-        if token == '':
-            break
-        current_state = dfa.start_state
+    # import pdb; pdb.set_trace()
 
-        try:
-            for char in token:
-                for transition in current_state.transitions:
-                    if transition.matches(char):
-                        current_state = transition.target
-                        break
-                else:
-                    raise Exception('Invalid token: ' + token)
-            if isinstance(current_state, FinalState):
-                print(current_state.resolve_token_type(token), token)
-            else:
-                raise Exception('Invalid token: ' + token)
-        except Exception as e:
-            if str(e).startswith('Invalid token: '):
-                print(e)
-            else:
-                raise
+    try:
+        while True:
+            lineno, token_type, lexeme = scanner.get_next_token()
+            if token_type not in [TokenType.WHITESPACE, TokenType.COMMENT]:
+                print(f'{lineno:>3}: {token_type.name:<10} {lexeme}')
+    except ScannerError as e:
+        print(e.lineno, e.message, e.lexeme)
+    finally:
+        pprint(scanner.symbol_table)
