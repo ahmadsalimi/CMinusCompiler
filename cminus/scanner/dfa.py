@@ -7,10 +7,10 @@ class TokenType(Enum):
     """
     TokenType class
     """
-    IDENTIFIER = 1
+    ID = 1
     KEYWORD = 2
     SYMBOL = 3
-    NUMBER = 4
+    NUM = 4
     COMMENT = 5
     WHITESPACE = 6
 
@@ -33,6 +33,13 @@ class FinalState(State):
     def __init__(self, id: int, token_type_resolver: Callable[[str], TokenType]):
         super().__init__(id)
         self.resolve_token_type = token_type_resolver
+
+
+class ErrorState(State):
+
+    def __init__(self, id: int, message):
+        super().__init__(id)
+        self.message = message
 
 
 class Transition:
