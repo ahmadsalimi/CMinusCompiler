@@ -39,8 +39,6 @@ class Scanner:
             Tuple[int, TokenType, str]: Line number, the next token type and its lexeme.
         """
         try:
-            # if self._token_start == 235:
-            #     import pdb; pdb.set_trace()
             next_token_type, next_token_lexeme = self._next_token_lookahead()
         except ScannerError as e:
             self._token_start += len(e.lexeme)
