@@ -62,6 +62,7 @@ def create_cminus_dfa() -> DFA:
     dfa.add_transition(10, Transition(dfa.states[9], r'[^\*/]'))
     dfa.add_transition(10, Transition(dfa.states[10], r'\*'))
     dfa.add_transition(10, Transition(dfa.states[8], r'/'))
+    dfa.add_transition(6, Transition(dfa.states[15], ILLEGAL_CHARS))
 
     dfa.add_transition(1, Transition(dfa.states[11], r'\s'))
 
