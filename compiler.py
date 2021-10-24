@@ -1,3 +1,4 @@
+import os
 from typing import Callable, Dict, List, Tuple
 
 from cminus.scanner.dfa import DFA, ErrorState, State, FinalState, Transition, TokenType
@@ -8,7 +9,6 @@ from cminus.scanner.scanner import Scanner, KEYWORDS
 def create_cminus_dfa() -> DFA:
     dfa = DFA(State(1))
     
-
     def default_resolver(token_type: TokenType) -> Callable[[str], TokenType]:
         return lambda _: token_type
 
@@ -24,8 +24,9 @@ def create_cminus_dfa() -> DFA:
     error_states = {
         12: 'Invalid number',
         14: 'Unmatched comment',
+        15: 'Invalid input',
     }
-    for i in range(2, 15):
+    for i in range(2, 16):
         if i in finals:
             dfa.add_state(FinalState(i, finals[i]))
         elif i in error_states:
@@ -33,19 +34,24 @@ def create_cminus_dfa() -> DFA:
         else:
             dfa.add_state(State(i))
 
+    ILLEGAL_CHARS = r'[^a-zA-Z0-9;:,\[\]\(\)\{\}\+\-<=\*/\s]'
+
     dfa.add_transition(1, Transition(dfa.states[2], r'\d'))
     dfa.add_transition(2, Transition(dfa.states[2], r'\d'))
-    dfa.add_transition(2, Transition(dfa.states[12], r'[a-zA-Z]'))
+    dfa.add_transition(2, Transition(dfa.states[12], r'([a-zA-Z]|' + ILLEGAL_CHARS + r')'))
 
     dfa.add_transition(1, Transition(dfa.states[3], r'[a-zA-Z]'))
     dfa.add_transition(3, Transition(dfa.states[3], r'[a-zA-Z0-9]'))
+    dfa.add_transition(3, Transition(dfa.states[15], ILLEGAL_CHARS))
 
     dfa.add_transition(1, Transition(dfa.states[4], r'[;:,\[\]\(\)\{\}\+\-<]'))
     dfa.add_transition(1, Transition(dfa.states[5], r'='))
     dfa.add_transition(5, Transition(dfa.states[4], r'='))
     dfa.add_transition(1, Transition(dfa.states[13], r'\*'))
     dfa.add_transition(13, Transition(dfa.states[14], r'/'))
-    
+    dfa.add_transition(13, Transition(dfa.states[15], ILLEGAL_CHARS))
+    dfa.add_transition(5, Transition(dfa.states[15], ILLEGAL_CHARS))
+
     dfa.add_transition(1, Transition(dfa.states[6], r'/'))
     dfa.add_transition(6, Transition(dfa.states[7], r'/'))
     dfa.add_transition(7, Transition(dfa.states[7], r'[^\n]'))
@@ -59,6 +65,8 @@ def create_cminus_dfa() -> DFA:
 
     dfa.add_transition(1, Transition(dfa.states[11], r'\s'))
 
+    dfa.add_transition(1, Transition(dfa.states[15], ILLEGAL_CHARS))
+
     return dfa
 
 
@@ -67,6 +75,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Cminus Scanner')
     parser.add_argument('-i', '--input', default='input.txt', help='Input file')
+    parser.add_argument('-o', '--output-directory', default='', help='Output directory')
 
     args = parser.parse_args()
 
@@ -87,29 +96,33 @@ if __name__ == '__main__':
                     current_tokens[lineno] = []
                 current_tokens[lineno].append((token_type, lexeme))
         except ScannerError as e:
-            if lineno not in errors:
-                errors[lineno] = []
-            errors[lineno].append(e)
+            if e.lineno not in errors:
+                errors[e.lineno] = []
+            errors[e.lineno].append(e)
     
-    print('\n**** TOKENS ****\n')
+    if args.output_directory != '':
+        os.makedirs(args.output_directory, exist_ok=True)
 
-    for lineno, tokens in current_tokens.items():
-        print(f'{lineno}.\t', end='')
-        print(' '.join([
-            f'({token_type.name}, {lexeme})'
-            for token_type, lexeme in tokens
-        ]), end=' \n')
+    with open(os.path.join(args.output_directory, 'tokens.txt'), 'w') as f:
+        for lineno, tokens in current_tokens.items():
+            print(f'{lineno}.\t', file=f, end='')
+            print(' '.join([
+                f'({token_type.name}, {lexeme})'
+                for token_type, lexeme in tokens
+            ]), end=' \n', file=f, flush=True)
 
-    print('\n**** ERRORS ****\n')
+    with open(os.path.join(args.output_directory, 'lexical_errors.txt'), 'w') as f:
+        if len(errors) == 0:
+            print('There is no lexical error.', file=f, end='')
+        for lineno, es in errors.items():
+            print(f'{lineno}.\t', end='',
+                  file=f, flush=True)
+            print(' '.join([
+                f'({e.lexeme}, {e.message})'
+                for e in es
+            ]), end=' \n', file=f, flush=True)
 
-    for lineno, es in errors.items():
-        print(f'{lineno}.\t', end='')
-        print(' '.join([
-            f'({e.lexeme}, {e.message})'
-            for e in es
-        ]), end=' \n')
-
-    print('\n**** SYM ****\n')
-
-    for lexeme, idx in scanner.symbol_table.items():
-        print(f'{idx}.\t{lexeme}')
+    with open(os.path.join(args.output_directory, 'symbol_table.txt'), 'w') as f:
+        for lexeme, idx in scanner.symbol_table.items():
+            print(f'{idx}.\t{lexeme}',
+                  file=f, flush=True)
