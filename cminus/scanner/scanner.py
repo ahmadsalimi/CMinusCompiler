@@ -1,5 +1,6 @@
 from typing import List, Tuple
 from collections import OrderedDict
+from dataclasses import dataclass
 
 from .dfa import DFA, ErrorState, FinalState, State, TokenType
 from .error import ScannerError
@@ -18,9 +19,21 @@ KEYWORDS = [
 ]
 
 
+@dataclass
+class Token:
+    type: TokenType
+    lexeme: str
+    lineno: int
+
+    def __repr__(self) -> str:
+        return f'({self.type}, {self.lexeme})'
+
+
 class Scanner:
+    instance: 'Scanner' = None
 
     def __init__(self, dfa: DFA, code: str, unclosed_comment_states: List[int]) -> None:
+        Scanner.instance = self
         self._dfa = dfa
         self._code = code
         self._unclosed_comment_states = unclosed_comment_states
@@ -33,14 +46,14 @@ class Scanner:
     def has_next_token(self) -> bool:
         return self._token_start < len(self._code)
 
-    def get_next_token(self) -> Tuple[int, TokenType, str]:
+    def get_next_token(self) -> Token:
         """ Returns the next token type and its lexeme.
 
         Returns:
-            Tuple[int, TokenType, str]: Line number, the next token type and its lexeme.
+            Token: Line number, the next token type and its lexeme.
         """
         if not self.has_next_token():
-            return self._lineno, TokenType.EOF, '$'
+            return Token(TokenType.EOF, '$', self._lineno)
 
         try:
             next_token_type, next_token_lexeme = self._next_token_lookahead()
@@ -52,7 +65,9 @@ class Scanner:
         self._add_to_symbol_table(next_token_type, next_token_lexeme)
 
         try:
-            return self._lineno, next_token_type, next_token_lexeme
+            if next_token_type in [TokenType.WHITESPACE, TokenType.COMMENT]:
+                return self.get_next_token()
+            return Token(next_token_type, next_token_lexeme, self._lineno)
         finally:
             self._lineno += next_token_lexeme.count('\n')
 
