@@ -13,6 +13,7 @@ class TokenType(Enum):
     NUM = 4
     COMMENT = 5
     WHITESPACE = 6
+    EOF = 7
 
 
 class State:

@@ -89,9 +89,11 @@ if __name__ == '__main__':
     current_line = None
     current_tokens: Dict[int, List[Tuple[TokenType, str]]] = {}
     errors: Dict[int, List[ScannerError]] = {}
-    while scanner.has_next_token():
+    while True:
         try:
             lineno, token_type, lexeme = scanner.get_next_token()
+            if token_type == TokenType.EOF:
+                break
             if token_type not in [TokenType.WHITESPACE, TokenType.COMMENT]:
                 if lineno not in current_tokens:
                     current_tokens[lineno] = []

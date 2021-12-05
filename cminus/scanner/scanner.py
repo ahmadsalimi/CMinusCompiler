@@ -8,6 +8,7 @@ from .error import ScannerError
 KEYWORDS = [
     'if',
     'else',
+    'endif',
     'void',
     'int',
     'repeat',
@@ -38,6 +39,9 @@ class Scanner:
         Returns:
             Tuple[int, TokenType, str]: Line number, the next token type and its lexeme.
         """
+        if not self.has_next_token():
+            return self._lineno, TokenType.EOF, '$'
+
         try:
             next_token_type, next_token_lexeme = self._next_token_lookahead()
         except ScannerError as e:
