@@ -65,11 +65,11 @@ class Scanner:
         self._add_to_symbol_table(next_token_type, next_token_lexeme)
 
         try:
-            if next_token_type in [TokenType.WHITESPACE, TokenType.COMMENT]:
-                return self.get_next_token()
             return Token(next_token_type, next_token_lexeme, self._lineno)
         finally:
             self._lineno += next_token_lexeme.count('\n')
+            if next_token_type in [TokenType.WHITESPACE, TokenType.COMMENT]:
+                return self.get_next_token()
 
     def _add_to_symbol_table(self, token_type: TokenType, lexeme: str) -> None:
         if token_type in [TokenType.ID, TokenType.KEYWORD]:
