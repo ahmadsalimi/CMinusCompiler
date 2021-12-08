@@ -2,9 +2,16 @@ from dataclasses import dataclass, field
 import re
 from enum import Enum
 from typing import Iterable, List, Tuple, Union
+from anytree import Node as AnyNode
 
+
+from .error_logger import ParserErrorLogger
 from ..scanner.scanner import Scanner, Token
 from ..scanner.dfa import DFA, State, Transition, State, TokenType
+
+
+def format_nonterminal_name(snake_case: str) -> str:
+    return snake_case.replace('_', '-').capitalize()
 
 
 class ParserErrorType(Enum):
@@ -30,8 +37,14 @@ class Node:
     name: Union[str, Token]
     children: List['Node'] = field(default_factory=list)
 
-    def __repr__(self) -> str:
-        return repr(self.name)
+    def __str__(self) -> str:
+        return str(self.name)
+
+    def to_anytree(self, parent: AnyNode = None) -> AnyNode:
+        anynode = AnyNode(str(self), parent=parent)
+        for child in self.children:
+            child.to_anytree(parent=anynode)
+        return anynode
 
 
 class Matchable:
@@ -69,7 +82,7 @@ class TerminalTransition(Transition[Token]):
 class NonTerminalTransition(Transition[Token]):
     def __init__(self, target: State, dfa: 'ParserDFA', name: str) -> None:
         super().__init__(target)
-        self.name = name
+        self.name = format_nonterminal_name(name)
         self.dfa = dfa
 
     def matches(self, token: Token) -> Tuple[Node, Token]:
@@ -80,6 +93,7 @@ class NonTerminalTransition(Transition[Token]):
                 next_state, subtree, next_token = self.dfa.transition(token)
                 tree.children.append(subtree)
             except UnexpectedEOF as e:
+                tree.children.append(e.tree)
                 e.tree = tree
                 raise e
             except ParserError as e:
@@ -97,13 +111,12 @@ class NonTerminalTransition(Transition[Token]):
                         if nonterm_transition.dfa.in_first(token) or nonterm_transition.dfa.in_follow(token):
                             subtree, next_token = nonterm_transition.matches(token)
                             next_state = nonterm_transition.target
+                            tree.children.append(subtree)
                             break
                         if token.type == TokenType.EOF:
-                            # call error logger: unexpected EOF
-                            print(f'#{token.lineno}: Unexpected EOF')
+                            ParserErrorLogger.instance.unexpected_eof(token.lineno)
                             raise UnexpectedEOF(tree)
-                        # call error logger: illegal token
-                        print(f'#{token.lineno}: Illegal {token.lexeme if token.type not in [TokenType.ID, TokenType.NUM] else token.type.name}')
+                        ParserErrorLogger.instance.illegal_token(token)                        
 
             if next_state.final:
                 return tree, next_token
@@ -127,7 +140,7 @@ class ParserDFA(DFA[Token]):
         self.start_state = start_state
         self.first = first
         self.follow = follow
-        self.name = name
+        self.name = format_nonterminal_name(name)
         self.current_state = start_state
 
     def reset(self) -> None:
@@ -143,20 +156,20 @@ class ParserDFA(DFA[Token]):
         epsilon_transition = next((t for t in self.current_state.transitions if isinstance(t, EpsilonTransition)), None)
         if epsilon_transition is None or not epsilon_transition.parent_dfa.in_follow(token): # syntax error
             if all(isinstance(transition, (TerminalTransition, EpsilonTransition)) for transition in self.current_state.transitions):
-                # Call the error logger: missing first transition.value
-                print(f'#{token.lineno}: Missing {self.current_state.transitions[0].value or self.current_state.transitions[0].token_type.name}')
+                error_lexeme = self.current_state.transitions[0].value \
+                    or self.current_state.transitions[0].token_type.name
+                ParserErrorLogger.instance.missing_token(token.lineno, error_lexeme)
                 raise ParserError(ParserErrorType.MissingTerminal)
+
             nonterm_transition = next((t for t in self.current_state.transitions if isinstance(t, NonTerminalTransition)))
             if nonterm_transition.dfa.in_follow(token):
-                # Call the error logger: missing self.name
-                print(f'#{token.lineno}: Missing {nonterm_transition.name}')
+                ParserErrorLogger.instance.missing_token(token.lineno, nonterm_transition.name)
                 raise ParserError(ParserErrorType.MissingNonTerminal)
 
-            # Call the error logger: illegal token
-            print(f'#{token.lineno}: Illegal {token.lexeme if token.type not in [TokenType.ID, TokenType.NUM] else token.type.name}')
+            ParserErrorLogger.instance.illegal_token(token)
             raise ParserError(ParserErrorType.IllegalToken)
 
-        return epsilon_transition.target, 'epsilon', token
+        return epsilon_transition.target, Node('epsilon'), token
 
     def in_first(self, token: Token) -> bool:
         m = self._in_set(self.first, token)

@@ -25,8 +25,10 @@ class Token:
     lexeme: str
     lineno: int
 
-    def __repr__(self) -> str:
-        return f'({self.type}, {self.lexeme})'
+    def __str__(self) -> str:
+        if self.type == TokenType.EOF:
+            return self.lexeme
+        return f'({self.type.name}, {self.lexeme})'
 
 
 class Scanner:

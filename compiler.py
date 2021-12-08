@@ -1,9 +1,13 @@
 from dataclasses import dataclass, field
+import os
 from typing import Callable, Dict, Iterable, List
+
+from anytree import RenderTree
+from cminus.parser.error_logger import ParserErrorLogger
 
 from cminus.scanner.dfa import DFA, ErrorState, State, FinalState, RegexTransition, TokenType
 from cminus.scanner.scanner import Scanner, KEYWORDS
-from cminus.parser.dfa import EpsilonMatchable, EpsilonTransition, Matchable, Node, NonTerminalTransition, ParserDFA, ParserError, ParserErrorType, ParserState, TerminalTransition, UnexpectedEOF
+from cminus.parser.dfa import EpsilonMatchable, EpsilonTransition, Matchable, NonTerminalTransition, ParserDFA, ParserState, TerminalTransition, UnexpectedEOF
 
 
 
@@ -988,13 +992,6 @@ def create_cminus_dfa() -> DFA:
     return dfa
 
 
-def print_tree(file, root: Node, indent: int = 0) -> None:
-    print((('│' + ' ' * (indent - 4) + '── ') if indent > 3 else '') + str(root), file=file)
-    if isinstance(root, Node):
-        for child in root.children:
-            print_tree(file, child, indent + 4)
-
-
 if __name__ == '__main__':
     import argparse
 
@@ -1009,6 +1006,7 @@ if __name__ == '__main__':
 
     dfa = create_cminus_dfa()
     scanner = Scanner(dfa, code, [9, 10])
+    parser_error_logger = ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt'))
     parser = create_transition_diagrams()
     program = NonTerminalTransition(None, parser, 'program')
 
@@ -1019,49 +1017,7 @@ if __name__ == '__main__':
     except UnexpectedEOF as e:
         tree = e.tree
 
-    with open(args.output_directory + 'output.txt', 'w') as f:
-        print_tree(f, tree)
-
-    # current_line = None
-    # current_tokens: Dict[int, List[Tuple[TokenType, str]]] = {}
-    # errors: Dict[int, List[ScannerError]] = {}
-    # while True:
-    #     try:
-    #         lineno, token_type, lexeme = scanner.get_next_token()
-    #         if token_type == TokenType.EOF:
-    #             break
-    #         if token_type not in [TokenType.WHITESPACE, TokenType.COMMENT]:
-    #             if lineno not in current_tokens:
-    #                 current_tokens[lineno] = []
-    #             current_tokens[lineno].append((token_type, lexeme))
-    #     except ScannerError as e:
-    #         if e.lineno not in errors:
-    #             errors[e.lineno] = []
-    #         errors[e.lineno].append(e)
-    
-    # if args.output_directory != '':
-    #     os.makedirs(args.output_directory, exist_ok=True)
-
-    # with open(os.path.join(args.output_directory, 'tokens.txt'), 'w') as f:
-    #     for lineno, tokens in current_tokens.items():
-    #         print(f'{lineno}.\t', file=f, end='')
-    #         print(' '.join([
-    #             f'({token_type.name}, {lexeme})'
-    #             for token_type, lexeme in tokens
-    #         ]), end=' \n', file=f, flush=True)
-
-    # with open(os.path.join(args.output_directory, 'lexical_errors.txt'), 'w') as f:
-    #     if len(errors) == 0:
-    #         print('There is no lexical error.', file=f, end='')
-    #     for lineno, es in errors.items():
-    #         print(f'{lineno}.\t', end='',
-    #               file=f, flush=True)
-    #         print(' '.join([
-    #             f'({e.lexeme}, {e.message})'
-    #             for e in es
-    #         ]), end=' \n', file=f, flush=True)
-
-    # with open(os.path.join(args.output_directory, 'symbol_table.txt'), 'w') as f:
-    #     for lexeme, idx in scanner.symbol_table.items():
-    #         print(f'{idx}.\t{lexeme}',
-    #               file=f, flush=True)
+    anytree = tree.to_anytree()
+    with open(os.path.join(args.output_directory, 'parse_tree.txt'), 'w') as f:
+        for pre, _, node in RenderTree(anytree):
+            print(f'{pre}{node.name}', file=f)
