@@ -1006,16 +1006,16 @@ if __name__ == '__main__':
 
     dfa = create_cminus_dfa()
     scanner = Scanner(dfa, code, [9, 10])
-    parser_error_logger = ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt'))
     parser = create_transition_diagrams()
     program = NonTerminalTransition(None, parser, 'program')
 
     token = scanner.get_next_token()
 
-    try:
-        tree, _ = program.matches(token)
-    except UnexpectedEOF as e:
-        tree = e.tree
+    with ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt')):
+        try:
+            tree, _ = program.matches(token)
+        except UnexpectedEOF as e:
+            tree = e.tree
 
     anytree = tree.to_anytree()
     with open(os.path.join(args.output_directory, 'parse_tree.txt'), 'w') as f:

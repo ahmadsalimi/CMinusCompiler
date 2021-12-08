@@ -18,11 +18,21 @@ class ParserErrorLogger:
         ParserErrorLogger.instance = self
         self.file_name = file_name
         self.log_file = open(file_name, 'w')
+        self.any_error = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if not self.any_error:
+            self.log_file.write('There is no syntax error.\n')
+        self.log_file.close()
 
     def __log(self, lineno: int, errortype: _ErrorType, token: str = None) -> None:
         formatted = f'#{lineno} : syntax error, {errortype.value}'
         formatted += f' {token}\n' if token else '\n'
         self.log_file.write(formatted)
+        self.any_error = True
 
     def missing_token(self, lineno: int, lexeme: str):
         self.__log(lineno, _ErrorType.MissingToken, lexeme)
