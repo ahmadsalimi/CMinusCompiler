@@ -157,7 +157,7 @@ class ParserDFA(DFA[Token]):
         if epsilon_transition is None or not epsilon_transition.parent_dfa.in_follow(token): # syntax error
             if all(isinstance(transition, (TerminalTransition, EpsilonTransition)) for transition in self.current_state.transitions):
                 error_lexeme = self.current_state.transitions[0].value \
-                    or self.current_state.transitions[0].token_type.name
+                    or self.current_state.transitions[0].token_type.value
                 ParserErrorLogger.instance.missing_token(token.lineno, error_lexeme)
                 raise ParserError(ParserErrorType.MissingTerminal)
 

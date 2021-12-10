@@ -8,13 +8,13 @@ class TokenType(Enum):
     """
     TokenType class
     """
-    ID = 1
-    KEYWORD = 2
-    SYMBOL = 3
-    NUM = 4
-    COMMENT = 5
-    WHITESPACE = 6
-    EOF = 7
+    ID = 'ID'
+    KEYWORD = 'KEYWORD'
+    SYMBOL = 'SYMBOL'
+    NUM = 'NUM'
+    COMMENT = 'COMMENT'
+    WHITESPACE = 'WHITESPACE'
+    EOF = '$'
 
 
 TTransitionToken = TypeVar('TTransitionToken')

@@ -28,7 +28,7 @@ class Token:
     def __str__(self) -> str:
         if self.type == TokenType.EOF:
             return self.lexeme
-        return f'({self.type.name}, {self.lexeme})'
+        return f'({self.type.value}, {self.lexeme})'
 
 
 class Scanner:

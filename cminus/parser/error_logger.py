@@ -40,7 +40,7 @@ class ParserErrorLogger:
     def illegal_token(self, token: Token):
         lexeme = token.lexeme \
             if token.type not in [TokenType.ID, TokenType.NUM] \
-            else token.type.name
+            else token.type.value
         self.__log(token.lineno, _ErrorType.IllegalToken, lexeme)
 
     def unexpected_eof(self, lineno: int):
