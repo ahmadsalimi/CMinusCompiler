@@ -18,13 +18,13 @@ class Operation(Enum):
 
     @staticmethod
     def from_symbol(symbol: str) -> 'Operation':
-        return Operation(OPERATIONS[symbol])
+        return OPERATIONS[symbol]
 
 
 OPERATIONS: Dict[str, Operation] = {
     '+': Operation.Add,
     '-': Operation.Sub,
-    '*': Operation.Mul,
+    '*': Operation.Mult,
     '<': Operation.Lt,
     '==': Operation.Eq,
 }
@@ -54,6 +54,9 @@ class Value:
     def pure(self) -> int:
         return int(self.value[1:] if self.value[0] in '#@' else self.value)
 
+    def __str__(self) -> str:
+        return str(self.value)
+
 
 @dataclass
 class Instruction:
@@ -65,6 +68,9 @@ class Instruction:
     @staticmethod
     def empty() -> 'Instruction':
         return Instruction(Operation.Empty, Value.empty())
+
+    def __repr__(self) -> str:
+        return f'({self.op.value}, {self.arg1}, {self.arg2}, {self.arg3})'
 
 
 class ProgramBlock:
