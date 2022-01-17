@@ -1,10 +1,8 @@
 from enum import Enum
 from typing import Callable, Dict, Protocol
 
-from cminus.codegen.scope import ScopeManager, ScopeType
-
-
 from ..scanner.symbol_table import SymbolTable
+from .scope import ScopeManager, ScopeType
 from .ar import ActivationsStack, RegisterFile
 from .machine_state import MachineState
 from ..scanner.scanner import Token
