@@ -3,12 +3,13 @@ import os
 from typing import Callable, Dict, Iterable, List
 
 from anytree import RenderTree
+from cminus.codegen.codegen import ActionSymbol, CodeGenerator
+from cminus.codegen.config import CodeGenConfig
 from cminus.parser.error_logger import ParserErrorLogger
-
 from cminus.scanner.dfa import DFA, ErrorState, State, FinalState, RegexTransition, TokenType
-from cminus.scanner.scanner import Scanner, KEYWORDS
+from cminus.scanner.scanner import Scanner, Token
 from cminus.parser.dfa import EpsilonMatchable, EpsilonTransition, Matchable, NonTerminalTransition, ParserDFA, ParserState, TerminalTransition, UnexpectedEOF
-
+from cminus.scanner.symbol_table import SymbolTable, KEYWORDS
 
 
 @dataclass
@@ -21,11 +22,18 @@ class TransitionInfo:
 class TerminalTransitionInfo(TransitionInfo):
     token_type: TokenType
     value: str = None
+    symbols: List[ActionSymbol] = field(default_factory=list)
 
 
 @dataclass
 class NonTerminalTransitionInfo(TransitionInfo):
     name: str
+    symbols: List[ActionSymbol] = field(default_factory=list)
+
+
+@dataclass
+class EpsilonTransitionInfo(TransitionInfo):
+    symbols: List[ActionSymbol] = field(default_factory=list)
 
 
 @dataclass
@@ -36,7 +44,7 @@ class ParserDFAInfo:
     follow: Iterable[Matchable] = field(default_factory=list)
     terminal_transitions: List[TerminalTransitionInfo] = field(default_factory=list)
     non_terminal_transitions: List[NonTerminalTransitionInfo] = field(default_factory=list)
-    epsilon_transitions: List[TransitionInfo] = field(default_factory=list)
+    epsilon_transitions: List[EpsilonTransitionInfo] = field(default_factory=list)
 
 
 def create_transition_diagrams() -> ParserDFA:
@@ -74,12 +82,12 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(2, 3, 'declaration_list'),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 3),
+                EpsilonTransitionInfo(1, 3),
             ]
         ),
         declaration=ParserDFAInfo(
-            num_states=3,
-            final_state=3,
+            num_states=4,
+            final_state=4,
             first=[
                 Matchable(TokenType.KEYWORD, r'(int|void)'),
             ],
@@ -91,9 +99,13 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(1, 2, 'declaration_initial'),
+                NonTerminalTransitionInfo(1, 2, 'declaration_initial',
+                                          symbols=[ActionSymbol.Declare]),
                 NonTerminalTransitionInfo(2, 3, 'declaration_prime'),
             ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(3, 4, symbols=[ActionSymbol.Pop]),
+            ]
         ),
         declaration_initial=ParserDFAInfo(
             num_states=3,
@@ -108,8 +120,10 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(1, 2, 'type_specifier'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(2, 3, TokenType.ID),
-            ]
+                TerminalTransitionInfo(2, 3, TokenType.ID,
+                                       symbols=[ActionSymbol.DeclareId,
+                                                ActionSymbol.Pid]),
+            ],
         ),
         declaration_prime=ParserDFAInfo(
             num_states=2,
@@ -144,15 +158,17 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '['),
-                TerminalTransitionInfo(2, 3, TokenType.NUM),
+                TerminalTransitionInfo(2, 3, TokenType.NUM,
+                                       symbols=[ActionSymbol.Pnum]),
                 TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ']'),
-                TerminalTransitionInfo(4, 5, TokenType.SYMBOL, ';'),
+                TerminalTransitionInfo(4, 5, TokenType.SYMBOL, ';',
+                                       symbols=[ActionSymbol.DeclareArray]),
                 TerminalTransitionInfo(1, 5, TokenType.SYMBOL, ';'),
             ],
         ),
         fun_declaration_prime=ParserDFAInfo(
-            num_states=5,
-            final_state=5,
+            num_states=6,
+            final_state=6,
             first=[
                 Matchable(TokenType.SYMBOL, r'\('),
             ],
@@ -168,8 +184,23 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(4, 5, 'compound_stmt'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '('),
-                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')'),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '(',
+                                       symbols=[ActionSymbol.DeclareFunction,
+                                                ActionSymbol.SetExec,
+                                                ActionSymbol.TemporaryScope,
+                                                ActionSymbol.ScopeStart,
+                                                ActionSymbol.ArgInit]),
+                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')',
+                                       symbols=[ActionSymbol.ArgFinish,
+                                                ActionSymbol.FunctionScope,
+                                                ActionSymbol.ScopeStart]),
+            ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(5, 6, symbols=[ActionSymbol.ScopeEnd,
+                                                     ActionSymbol.FunctionScope,
+                                                     ActionSymbol.ScopeEnd,
+                                                     ActionSymbol.TemporaryScope,
+                                                     ActionSymbol.FunctionReturn]),
             ],
         ),
         type_specifier=ParserDFAInfo(
@@ -197,11 +228,14 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(3, 4, 'param_prime'),
-                NonTerminalTransitionInfo(4, 5, 'param_list'),
+                NonTerminalTransitionInfo(4, 5, 'param_list', symbols=[ActionSymbol.Pop]),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'int'),
-                TerminalTransitionInfo(2, 3, TokenType.ID),
+                TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'int',
+                                       symbols=[ActionSymbol.Declare]),
+                TerminalTransitionInfo(2, 3, TokenType.ID,
+                                       symbols=[ActionSymbol.DeclareId,
+                                                ActionSymbol.Pid]),
                 TerminalTransitionInfo(1, 5, TokenType.KEYWORD, 'void'),
             ],
         ),
@@ -223,12 +257,12 @@ def create_transition_diagrams() -> ParserDFA:
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, ','),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         param=ParserDFAInfo(
-            num_states=3,
-            final_state=3,
+            num_states=4,
+            final_state=4,
             first=[
                 Matchable(TokenType.KEYWORD, r'(int|void)'),
             ],
@@ -236,8 +270,12 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.SYMBOL, r'(,|\))'),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(1, 2, 'declaration_initial'),
+                NonTerminalTransitionInfo(1, 2, 'declaration_initial',
+                                          symbols=[ActionSymbol.Declare]),
                 NonTerminalTransitionInfo(2, 3, 'param_prime'),
+            ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(3, 4, symbols=[ActionSymbol.Pop]),
             ],
         ),
         param_prime=ParserDFAInfo(
@@ -255,7 +293,7 @@ def create_transition_diagrams() -> ParserDFA:
                 TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ']'),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 3),
+                EpsilonTransitionInfo(1, 3),
             ],
         ),
         compound_stmt=ParserDFAInfo(
@@ -298,7 +336,7 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(2, 3, 'statement_list'),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 3),
+                EpsilonTransitionInfo(1, 3),
             ],
         ),
         statement=ParserDFAInfo(
@@ -325,7 +363,7 @@ def create_transition_diagrams() -> ParserDFA:
             ],
         ),
         expression_stmt=ParserDFAInfo(
-            num_states=3,
+            num_states=4,
             final_state=3,
             first=[
                 Matchable(TokenType.SYMBOL, r'(\(|;)'),
@@ -343,8 +381,12 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(1, 2, 'expression'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'break'),
-                TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ';'),
+                TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ';',
+                                       symbols=[ActionSymbol.Pop]),
+                TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'break'),
+                TerminalTransitionInfo(4, 3, TokenType.SYMBOL, ';',
+                                       symbols=[ActionSymbol.ContainerScope,
+                                                ActionSymbol.Prison]),
                 TerminalTransitionInfo(1, 3, TokenType.SYMBOL, ';'),
             ],
         ),
@@ -362,8 +404,13 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(3, 4, 'expression'),
-                NonTerminalTransitionInfo(5, 6, 'statement'),
-                NonTerminalTransitionInfo(6, 7, 'else_stmt'),
+                NonTerminalTransitionInfo(5, 6, 'statement',
+                                          symbols=[ActionSymbol.Hold,
+                                                   ActionSymbol.SimpleScope,
+                                                   ActionSymbol.ScopeStart]),
+                NonTerminalTransitionInfo(6, 7, 'else_stmt',
+                                          symbols=[ActionSymbol.ScopeEnd,
+                                                   ActionSymbol.SimpleScope]),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'if'),
@@ -384,11 +431,20 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(2, 3, 'statement'),
+                NonTerminalTransitionInfo(2, 3, 'statement',
+                                          symbols=[ActionSymbol.SimpleScope,
+                                                   ActionSymbol.ScopeStart]),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'else'),
-                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'endif'),
+                TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'else',
+                                       symbols=[ActionSymbol.TemporaryScope,
+                                                ActionSymbol.Prison,
+                                                ActionSymbol.Decide]),
+                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'endif',
+                                       symbols=[ActionSymbol.ScopeEnd,
+                                                ActionSymbol.SimpleScope,
+                                                ActionSymbol.TemporaryScope,
+                                                ActionSymbol.PrisonBreak]),
                 TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'endif'),
             ],
         ),
@@ -405,19 +461,27 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(2, 3, 'statement'),
+                NonTerminalTransitionInfo(2, 3, 'statement',
+                                          symbols=[ActionSymbol.Label,
+                                                   ActionSymbol.ContainerScope,
+                                                   ActionSymbol.ScopeStart]),
                 NonTerminalTransitionInfo(5, 6, 'expression'),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'repeat'),
-                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'until'),
+                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'until',
+                                       symbols=[ActionSymbol.ScopeEnd,
+                                                ActionSymbol.ContainerScope]),
                 TerminalTransitionInfo(4, 5, TokenType.SYMBOL, '('),
-                TerminalTransitionInfo(6, 7, TokenType.SYMBOL, ')'),
+                TerminalTransitionInfo(6, 7, TokenType.SYMBOL, ')',
+                                       symbols=[ActionSymbol.Hold,
+                                                ActionSymbol.JumpRepeat,
+                                                ActionSymbol.Decide]),
             ],
         ),
         return_stmt=ParserDFAInfo(
-            num_states=3,
-            final_state=3,
+            num_states=4,
+            final_state=4,
             first=[
                 Matchable(TokenType.KEYWORD, r'return'),
             ],
@@ -432,6 +496,10 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'return'),
+            ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(3, 4, symbols=[ActionSymbol.FunctionScope,
+                                                     ActionSymbol.Prison]),
             ],
         ),
         return_stmt_prime=ParserDFAInfo(
@@ -449,10 +517,13 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(1, 2, 'expression'),
+                NonTerminalTransitionInfo(1, 2, 'expression',
+                                          symbols=[ActionSymbol.Prv]),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ';'),
+                TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ';',
+                                       symbols=[ActionSymbol.Assign,
+                                                ActionSymbol.Pop]),
                 TerminalTransitionInfo(1, 3, TokenType.SYMBOL, ';'),
             ],
         ),
@@ -472,11 +543,12 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(1, 3, 'simple_expression_zegond'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.ID),
+                TerminalTransitionInfo(1, 2, TokenType.ID,
+                                       symbols=[ActionSymbol.Pid]),
             ],
         ),
         B=ParserDFAInfo(
-            num_states=6,
+            num_states=7,
             final_state=5,
             first=[
                 EpsilonMatchable(),
@@ -487,8 +559,9 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(2, 3, 'expression'),
-                NonTerminalTransitionInfo(4, 5, 'H'),
-                NonTerminalTransitionInfo(6, 5, 'expression'),
+                NonTerminalTransitionInfo(4, 5, 'H',
+                                          symbols=[ActionSymbol.Parray]),
+                NonTerminalTransitionInfo(6, 7, 'expression'),
                 NonTerminalTransitionInfo(1, 5, 'simple_expression_prime'),
             ],
             terminal_transitions=[
@@ -496,9 +569,12 @@ def create_transition_diagrams() -> ParserDFA:
                 TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ']'),
                 TerminalTransitionInfo(1, 6, TokenType.SYMBOL, '='),
             ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(7, 5, symbols=[ActionSymbol.Assign]),
+            ],
         ),
         H=ParserDFAInfo(
-            num_states=5,
+            num_states=6,
             final_state=4,
             first=[
                 EpsilonMatchable(),
@@ -511,10 +587,13 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(1, 2, 'G'),
                 NonTerminalTransitionInfo(2, 3, 'D'),
                 NonTerminalTransitionInfo(3, 4, 'C'),
-                NonTerminalTransitionInfo(5, 4, 'expression'),
+                NonTerminalTransitionInfo(5, 6, 'expression'),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 5, TokenType.SYMBOL, '='),
+            ],
+            epsilon_transitions=[
+                EpsilonTransitionInfo(6, 4, symbols=[ActionSymbol.Assign]),
             ],
         ),
         simple_expression_zegond=ParserDFAInfo(
@@ -548,8 +627,8 @@ def create_transition_diagrams() -> ParserDFA:
             ],
         ),
         C=ParserDFAInfo(
-            num_states=3,
-            final_state=3,
+            num_states=4,
+            final_state=4,
             first=[
                 EpsilonMatchable(),
                 Matchable(TokenType.SYMBOL, r'(<|==)'),
@@ -562,7 +641,8 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(2, 3, 'additive_expression'),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 3),
+                EpsilonTransitionInfo(3, 4, symbols=[ActionSymbol.OpExec]),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         relop=ParserDFAInfo(
@@ -577,8 +657,10 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '<'),
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '=='),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '<',
+                                       symbols=[ActionSymbol.OpPush]),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '==',
+                                       symbols=[ActionSymbol.OpPush]),
             ],
         ),
         additive_expression=ParserDFAInfo(
@@ -640,10 +722,10 @@ def create_transition_diagrams() -> ParserDFA:
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(1, 2, 'addop'),
                 NonTerminalTransitionInfo(2, 3, 'term'),
-                NonTerminalTransitionInfo(3, 4, 'D'),
+                NonTerminalTransitionInfo(3, 4, 'D', symbols=[ActionSymbol.OpExec]),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         addop=ParserDFAInfo(
@@ -658,8 +740,10 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.NUM),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '+'),
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '-'),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '+',
+                                       symbols=[ActionSymbol.OpPush]),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '-',
+                                       symbols=[ActionSymbol.OpPush]),
             ],
         ),
         term=ParserDFAInfo(
@@ -720,13 +804,15 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(2, 3, 'factor'),
-                NonTerminalTransitionInfo(3, 4, 'G'),
+                NonTerminalTransitionInfo(3, 4, 'G',
+                                          symbols=[ActionSymbol.OpExec]),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '*'),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '*',
+                                       symbols=[ActionSymbol.OpPush]),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         factor=ParserDFAInfo(
@@ -747,8 +833,8 @@ def create_transition_diagrams() -> ParserDFA:
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '('),
                 TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')'),
-                TerminalTransitionInfo(1, 5, TokenType.ID),
-                TerminalTransitionInfo(1, 4, TokenType.NUM),
+                TerminalTransitionInfo(1, 5, TokenType.ID, symbols=[ActionSymbol.Pid]),
+                TerminalTransitionInfo(1, 4, TokenType.NUM, symbols=[ActionSymbol.Pnum]),
             ],
         ),
         var_call_prime=ParserDFAInfo(
@@ -762,12 +848,13 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.SYMBOL, r'(\+|-|;|\)|<|==|\]|,|\*)'),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(2, 3, 'args'),
+                NonTerminalTransitionInfo(2, 3, 'args', symbols=[ActionSymbol.ArgPass]),
                 NonTerminalTransitionInfo(1, 4, 'var_prime'),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '('),
-                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')'),
+                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')',
+                                       symbols=[ActionSymbol.FunctionCall]),
             ],
         ),
         var_prime=ParserDFAInfo(
@@ -785,10 +872,11 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '['),
-                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ']'),
+                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ']',
+                                       symbols=[ActionSymbol.Parray]),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         factor_prime=ParserDFAInfo(
@@ -802,14 +890,16 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.SYMBOL, r'(\+|-|;|\)|<|==|\]|,|\*)'),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(2, 3, 'args'),
+                NonTerminalTransitionInfo(2, 3, 'args',
+                                          symbols=[ActionSymbol.ArgPass]),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '('),
-                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')'),
+                TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')',
+                                       symbols=[ActionSymbol.FunctionCall]),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
         factor_zegond=ParserDFAInfo(
@@ -828,7 +918,8 @@ def create_transition_diagrams() -> ParserDFA:
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '('),
                 TerminalTransitionInfo(3, 4, TokenType.SYMBOL, ')'),
-                TerminalTransitionInfo(1, 4, TokenType.NUM),
+                TerminalTransitionInfo(1, 4, TokenType.NUM,
+                                       symbols=[ActionSymbol.Pnum]),
             ],
         ),
         args=ParserDFAInfo(
@@ -847,7 +938,7 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransitionInfo(1, 2, 'arg_list'),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 2),
+                EpsilonTransitionInfo(1, 2),
             ],
         ),
         arg_list=ParserDFAInfo(
@@ -884,7 +975,7 @@ def create_transition_diagrams() -> ParserDFA:
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, ','),
             ],
             epsilon_transitions=[
-                TransitionInfo(1, 4),
+                EpsilonTransitionInfo(1, 4),
             ],
         ),
     )
@@ -905,7 +996,8 @@ def create_transition_diagrams() -> ParserDFA:
                 TerminalTransition(
                     dfa.states[transition.target],
                     transition.token_type,
-                    value=transition.value
+                    value=transition.value,
+                    symbols=transition.symbols,
                 )
             )
 
@@ -915,14 +1007,19 @@ def create_transition_diagrams() -> ParserDFA:
                 NonTerminalTransition(
                     dfa.states[transition.target],
                     dfas[transition.name],
-                    transition.name
+                    transition.name,
+                    symbols=transition.symbols,
                 )
             )
 
         for transition in info.epsilon_transitions:
             dfa.add_transition(
                 transition.source,
-                EpsilonTransition(dfa.states[transition.target], dfa)
+                EpsilonTransition(
+                    dfa.states[transition.target],
+                    dfa,
+                    symbols=transition.symbols,
+                )
             )
 
     return dfas['program']
@@ -1009,8 +1106,13 @@ if __name__ == '__main__':
     parser = create_transition_diagrams()
     program = NonTerminalTransition(None, parser, 'program')
 
-    token = scanner.get_next_token()
+    output_function = Token(TokenType.ID, 'output')
+    SymbolTable.instance().add_symbol(output_function)
+    SymbolTable.instance().lookup(output_function).address = 5
+    config = CodeGenConfig()
+    codegen = CodeGenerator(config)
 
+    token = scanner.get_next_token()
     with ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt')):
         try:
             tree, _ = program.matches(token)
@@ -1021,3 +1123,5 @@ if __name__ == '__main__':
     with open(os.path.join(args.output_directory, 'parse_tree.txt'), 'w') as f:
         for pre, _, node in RenderTree(anytree):
             print(f'{pre}{node.name}', file=f)
+
+    codegen.execute_from('main')

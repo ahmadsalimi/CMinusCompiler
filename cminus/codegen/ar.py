@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from .config import Config
+from .config import CodeGenConfig
 from .pb import Instruction, Operation, ProgramBlock, Value
 
 
@@ -14,7 +14,7 @@ class RegisterFile:
 
 class ActivationsStack:
 
-    def __init__(self, config: Config, pb: ProgramBlock, rf: RegisterFile) -> None:
+    def __init__(self, config: CodeGenConfig, pb: ProgramBlock, rf: RegisterFile) -> None:
         self._config = config
         self._pb = pb
         self._rf = rf
@@ -51,7 +51,7 @@ class ActivationsStack:
 
     def reserve(self, size: int) -> None:
         self._pb.append(Instruction(Operation.Add,
-                        size * self._config.word_size,
+                        size * self._config.word_size.pure,
                         Value.direct(self._rf.sp),
                         Value.direct(self._rf.sp)))
 

@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Iterable, List, Tuple, Union
 from anytree import Node as AnyNode
 
-
 from .error_logger import ParserErrorLogger
+from ..codegen.codegen import ActionSymbol, CodeGenerator, Symbols
 from ..scanner.scanner import Scanner, Token
 from ..scanner.dfa import DFA, State, Transition, State, TokenType
 
@@ -67,9 +67,18 @@ class ParserState(State[Token]):
         self.final = final
 
 
-class TerminalTransition(Transition[Token]):
-    def __init__(self, target: State, token_type: TokenType, value: str = None) -> None:
+class ParserTransition(Transition[Token]):
+    def __init__(self, target: State, symbols: List[ActionSymbol] = []) -> None:
         super().__init__(target)
+        self.symbols = symbols
+
+    def action(self, token: Token) -> None:
+        for symbol in self.symbols:
+            Symbols.symbols[symbol](CodeGenerator.instance, token)
+
+class TerminalTransition(ParserTransition):
+    def __init__(self, target: State, token_type: TokenType, value: str = None, symbols: List[ActionSymbol] = []) -> None:
+        super().__init__(target, symbols=symbols)
         self.value = value
         self.token_type = token_type
 
@@ -79,9 +88,9 @@ class TerminalTransition(Transition[Token]):
         return None
 
 
-class NonTerminalTransition(Transition[Token]):
-    def __init__(self, target: State, dfa: 'ParserDFA', name: str) -> None:
-        super().__init__(target)
+class NonTerminalTransition(ParserTransition):
+    def __init__(self, target: State, dfa: 'ParserDFA', name: str, symbols: List[ActionSymbol] = []) -> None:
+        super().__init__(target, symbols=symbols)
         self.name = format_nonterminal_name(name)
         self.dfa = dfa
 
@@ -124,10 +133,10 @@ class NonTerminalTransition(Transition[Token]):
             self.dfa.current_state = next_state
             token = next_token
 
-class EpsilonTransition(Transition[Token]):
+class EpsilonTransition(ParserTransition):
     
-    def __init__(self, target: State, parent_dfa: 'ParserDFA') -> None:
-        super().__init__(target)
+    def __init__(self, target: State, parent_dfa: 'ParserDFA', symbols: List[ActionSymbol] = []) -> None:
+        super().__init__(target, symbols=symbols)
         self.parent_dfa = parent_dfa
 
     def matches(self, token: Token) -> Tuple[Node, Token]:
@@ -149,8 +158,10 @@ class ParserDFA(DFA[Token]):
     def transition(self, token: Token) -> Tuple['State', Node, Token]:
         for transition in self.current_state.transitions:
             if isinstance(transition, TerminalTransition) and (r := transition.matches(token)) is not None:
+                transition.action(token)
                 return transition.target, *r
             if isinstance(transition, NonTerminalTransition) and transition.dfa.in_first(token):
+                transition.action(token)
                 m, token = transition.matches(token)
                 return transition.target, m, token
         epsilon_transition = next((t for t in self.current_state.transitions if isinstance(t, EpsilonTransition)), None)

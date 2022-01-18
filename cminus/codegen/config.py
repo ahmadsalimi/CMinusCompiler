@@ -4,7 +4,7 @@ from .pb import Value
 
 
 @dataclass
-class Config:
+class CodeGenConfig:
     word_size: Value = Value.immediate(4)
     data_start: int = 0
     temp_start: int = 1000

@@ -3,12 +3,12 @@ from typing import List
 
 from ..scanner.scanner import Token
 from .pb import ProgramBlock
-from .config import Config
+from .config import CodeGenConfig
 
 
 class MachineState:
 
-    def __init__(self, config: Config, pb: ProgramBlock) -> None:
+    def __init__(self, config: CodeGenConfig, pb: ProgramBlock) -> None:
         self._config = config
         self.data_address = config.data_start
         self.temp_address = config.temp_start

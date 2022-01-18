@@ -6,7 +6,7 @@ from .scope import ScopeManager, ScopeType
 from .ar import ActivationsStack, RegisterFile
 from .machine_state import MachineState
 from ..scanner.scanner import Token
-from .config import Config
+from .config import CodeGenConfig
 from .semantic_stack import SemanticStack
 from .pb import Instruction, ProgramBlock, Value, Operation
 
@@ -21,7 +21,7 @@ class Symbols:
     @classmethod
     def symbol(cls, symbol: 'ActionSymbol') -> Callable[[Routine], Routine]:
         def _symbol(routine: Routine):
-            def wrapper(codegen: 'CodeGenerator', token: Token) -> None:
+            def wrapper(codegen: 'CodeGenerator', token: Token = None) -> None:
                 if routine.__code__.co_argcount == 2:
                     return routine(codegen, token)
                 return routine(codegen)
@@ -40,6 +40,7 @@ class ActionSymbol(Enum):
     DeclareArray = 'declare_array'
     DeclareFunction = 'declare_function'
     DeclareId = 'declare_id'
+    Declare = 'declare'
     Assign = 'assign'
     OpExec = 'op_exec'
     OpPush = 'op_push'
@@ -47,7 +48,7 @@ class ActionSymbol(Enum):
     Label = 'label'
     Decide = 'decide'
     Case = 'case'
-    JumpWhile = 'jump_while'
+    JumpRepeat = 'jump_repeat'
     Output = 'output'
     FunctionCall = 'function_call'
     FunctionReturn = 'function_return'
@@ -67,10 +68,15 @@ class ActionSymbol(Enum):
     def call(self, codegen: 'CodeGenerator', token: Token = None) -> None:
         self.value(codegen, token)
 
+    def __str__(self) -> str:
+        return f'#{self.value}'
+
 
 class CodeGenerator:
+    instance: 'CodeGenerator' = None
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: CodeGenConfig) -> None:
+        CodeGenerator.instance = self
         self._config = config
         self._pb = ProgramBlock()
         self._state = MachineState(config, self._pb)
@@ -79,11 +85,11 @@ class CodeGenerator:
                                 self._state.getvar(),
                                 self._state.getvar())
         self._as = ActivationsStack(config, self._pb, self._rf)
-        self._scope = ScopeManager(self._state, self._pb)
+        self._scope = ScopeManager(self._state, self._as)
         self._ss = SemanticStack()
-        self.template()
+        self._template()
 
-    def template(self) -> None:
+    def _template(self) -> None:
         self._pb.append(Instruction(Operation.Assign,
                         Value.immediate(self._config.stack_start),
                         Value.direct(self._rf.sp)))
@@ -93,15 +99,18 @@ class CodeGenerator:
         self._pb.append(Instruction(Operation.Assign,
                         Value.immediate(9999),
                         Value.direct(self._rf.ra)))
-        self._pb.append(Instruction(Operation.Assign,   # is it necessary?
+        self._pb.append(Instruction(Operation.Assign,   # TODO: is it necessary?
                         Value.immediate(9999),
                         Value.direct(self._rf.rv)))
 
         self._pb.append(Instruction(Operation.Jp, Value.direct(9))) # jp to main address
+        self._write_output_function()
+        self._state.getvar()    # TODO: why?
+
+    def _write_output_function(self) -> None:
         self._as.pop(Value.direct(self._rf.rv))
         self._pb.append(Instruction(Operation.Print, Value.direct(self._rf.rv)))
         self._pb.append(Instruction(Operation.Jp, Value.indirect(self._rf.ra)))
-        self._state.getvar()
 
     def execute_from(self, function_name: str) -> None:
         id_ = SymbolTable.instance().lookup(function_name)
@@ -169,6 +178,10 @@ class CodeGenerator:
                             Value.immediate(0),
                             Value.direct(id_.address)))
 
+    @Symbols.symbol(ActionSymbol.Declare)
+    def declare(self) -> None:
+        SymbolTable.instance().declaring = True
+
     @Symbols.symbol(ActionSymbol.Assign)
     def assign(self) -> None:
         self._pb.append(Instruction(Operation.Assign,
@@ -198,9 +211,10 @@ class CodeGenerator:
 
     @Symbols.symbol(ActionSymbol.Decide)
     def decide(self) -> None:
-        address = self._ss.pop()
+        holden_line = self._ss.pop().pure
         condition = self._ss.pop()
-        self._pb.append(Instruction(Operation.Jpf, condition, address))
+        target = Value.immediate(self._pb.i + 1)
+        self._pb[holden_line] = Instruction(Operation.Jpf, condition, target)
 
     @Symbols.symbol(ActionSymbol.Case)
     def case(self) -> None:
@@ -210,8 +224,8 @@ class CodeGenerator:
         self._pb.append(Instruction(Operation.Eq, arg1, arg2, t))
         self._ss.push(t)
 
-    @Symbols.symbol(ActionSymbol.JumpWhile)
-    def jump_while(self) -> None:
+    @Symbols.symbol(ActionSymbol.JumpRepeat)
+    def jump_repeat(self) -> None:
         top1 = self._ss.pop()
         top2 = self._ss.pop()
         label = self._ss.pop()
