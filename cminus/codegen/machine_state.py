@@ -23,10 +23,10 @@ class MachineState:
 
     def getvar(self, size: int = 1) -> int:
         address = self.data_address
-        self.data_address += size * self._config.word_size.pure
+        self.data_address += size * self._config.word_size.value
         return address
 
     def gettemp(self) -> int:
         address = self.temp_address
-        self.temp_address += self._config.word_size.pure
+        self.temp_address += self._config.word_size.value
         return address

@@ -105,16 +105,16 @@ class CodeGenerator:
 
         self._pb.append(Instruction(Operation.Jp, Value.direct(9))) # jp to main address
         self._write_output_function()
-        self._state.getvar()    # TODO: why?
 
     def _write_output_function(self) -> None:
         self._as.pop(Value.direct(self._rf.rv))
         self._pb.append(Instruction(Operation.Print, Value.direct(self._rf.rv)))
         self._pb.append(Instruction(Operation.Jp, Value.indirect(self._rf.ra)))
 
-    def execute_from(self, function_name: str) -> None:
+    def execute_from(self, function_name: Token) -> None:
         id_ = SymbolTable.instance().lookup(function_name)
-        self._pb[self._ss.pop()] = Instruction(Operation.Jp, Value.direct(id_.address))
+        line = self._ss.pop().value
+        self._pb[line] = Instruction(Operation.Jp, Value.direct(id_.address))
 
     def action(self, symbol: 'ActionSymbol', token: Token):
         symbol.call(self, token)
@@ -122,19 +122,19 @@ class CodeGenerator:
     @Symbols.symbol(ActionSymbol.Pid)
     def pid(self, token: Token) -> None:
         id_ = SymbolTable.instance().lookup(token)
-        self._ss.push(Value.direct(id_.address))
+        self._ss.push(Value.direct(id_.address), f'pid {token.lexeme}')
 
     @Symbols.symbol(ActionSymbol.Pnum)
     def pnum(self, token: Token) -> None:
-        self._ss.push(Value.immediate(int(token.lexeme)))
+        self._ss.push(Value.immediate(int(token.lexeme)), 'pnum')
 
     @Symbols.symbol(ActionSymbol.Pzero)
     def pzero(self) -> None:
-        self._ss.push(Value.immediate(0))
+        self._ss.push(Value.immediate(0), 'pzero')
 
     @Symbols.symbol(ActionSymbol.Prv)
     def prv(self) -> None:
-        self._ss.push(Value.direct(self._rf.rv))
+        self._ss.push(Value.direct(self._rf.rv), 'prv')
 
     @Symbols.symbol(ActionSymbol.Parray)
     def parray(self) -> None:
@@ -143,15 +143,15 @@ class CodeGenerator:
         t = self._state.gettemp()
         self._pb.append(Instruction(Operation.Mult, self._config.word_size, offset, Value.direct(t)))
         self._pb.append(Instruction(Operation.Add, base, Value.direct(t), Value.direct(t)))
-        self._ss.push(Value.indirect(t))
+        self._ss.push(Value.indirect(t), 'parray')
 
     @Symbols.symbol(ActionSymbol.Pop)
     def pop(self) -> None:
-        self._as.pop(self._ss.pop())
+        self._ss.pop()
 
     @Symbols.symbol(ActionSymbol.DeclareArray)
     def declare_array(self) -> None:
-        size = self._ss.pop().pure
+        size = self._ss.pop().value
         base = self._ss.from_top()
         self._pb.append(Instruction(Operation.Assign,
                         Value.direct(self._rf.sp), base))                        
@@ -161,9 +161,12 @@ class CodeGenerator:
     def declare_function(self) -> None:
         self._state.data_pointer = self._state.data_address
         self._state.temp_pointer = self._state.temp_address
-        self._pb[self._pb.i] = Instruction.empty()  # TODO: why?
+        if self._state.set_exec:
+            self._pb.i -= 1
+        else:
+            self._pb[-1] = Instruction.empty()
         id_ = SymbolTable.instance().lookup(self._state.last_token)
-        id_.address = self._pb.i + 1
+        id_.address = self._pb.i
 
     @Symbols.symbol(ActionSymbol.DeclareId)
     def declare_id(self, token: Token) -> None:
@@ -195,10 +198,11 @@ class CodeGenerator:
         arg1 = self._ss.pop()
         t = Value.direct(self._state.gettemp())
         self._pb.append(Instruction(op, arg1, arg2, t))
+        self._ss.push(t, f'op_exec {op}')
 
     @Symbols.symbol(ActionSymbol.OpPush)
     def op_push(self, token: Token) -> None:
-        self._ss.push(Operation.from_symbol(token.lexeme))
+        self._ss.push(Operation.from_symbol(token.lexeme), f'op_push {token.lexeme}')
 
     @Symbols.symbol(ActionSymbol.Hold)
     def hold(self) -> None:
@@ -207,13 +211,13 @@ class CodeGenerator:
 
     @Symbols.symbol(ActionSymbol.Label)
     def label(self) -> None:
-        self._ss.push(Value.direct(self._pb.i))
+        self._ss.push(Value.direct(self._pb.i), 'label')
 
     @Symbols.symbol(ActionSymbol.Decide)
     def decide(self) -> None:
-        holden_line = self._ss.pop().pure
+        holden_line = self._ss.pop().value
         condition = self._ss.pop()
-        target = Value.immediate(self._pb.i + 1)
+        target = Value.direct(self._pb.i)
         self._pb[holden_line] = Instruction(Operation.Jpf, condition, target)
 
     @Symbols.symbol(ActionSymbol.Case)
@@ -222,16 +226,16 @@ class CodeGenerator:
         arg1 = self._ss.pop()
         arg2 = self._ss.from_top()
         self._pb.append(Instruction(Operation.Eq, arg1, arg2, t))
-        self._ss.push(t)
+        self._ss.push(t, 'case')
 
     @Symbols.symbol(ActionSymbol.JumpRepeat)
     def jump_repeat(self) -> None:
-        top1 = self._ss.pop()
-        top2 = self._ss.pop()
+        d1, top1 = self._ss._s[-1].description, self._ss.pop()
+        d2, top2 = self._ss._s[-1].description, self._ss.pop()
         label = self._ss.pop()
         self._pb.append(Instruction(Operation.Jp, label))
-        self._ss.push(top2)
-        self._ss.push(top1)
+        self._ss.push(top2, d2)
+        self._ss.push(top1, d1)
 
     @Symbols.symbol(ActionSymbol.Output)
     def output(self) -> None:
@@ -242,35 +246,35 @@ class CodeGenerator:
         self.store()
         self.push_args()
         self._pb.append(Instruction(Operation.Assign,
-                        Value.immediate(self._pb.i + 3),
+                        Value.immediate(self._pb.i + 2),
                         Value.direct(self._rf.ra)))
         self._pb.append(Instruction(Operation.Jp, Value.direct(self._ss.pop())))
         self.restore()
         self.collect()
 
     def store(self) -> None:
-        for address in range(self._state.data_pointer, self._state.data_address, self._config.word_size.pure):
+        for address in range(self._state.data_pointer, self._state.data_address, self._config.word_size.value):
             self._as.push(Value.direct(address))
-        for address in range(self._state.temp_pointer, self._state.temp_address, self._config.word_size.pure):
+        for address in range(self._state.temp_pointer, self._state.temp_address, self._config.word_size.value):
             self._as.push(Value.direct(address))
         self._as.push_rf()
 
     def push_args(self) -> None:
-        for _ in range(self._state.arg_pointer.pop(), self._ss.length()):
+        for _ in range(self._state.arg_pointer.pop(), self._ss.length):
             self._as.push(self._ss.pop())
 
     def restore(self) -> None:
         self._as.pop_rf()
-        for address in range(self._state.temp_address, self._state.temp_pointer, -self._config.word_size.pure):
-            self._as.pop(Value.direct(address - self._config.word_size.pure))
-        for address in range(self._state.data_address, self._state.data_pointer, -self._config.word_size.pure):
-            self._as.pop(Value.direct(address - self._config.word_size.pure))
+        for address in range(self._state.temp_address, self._state.temp_pointer, -self._config.word_size.value):
+            self._as.pop(Value.direct(address - self._config.word_size.value))
+        for address in range(self._state.data_address, self._state.data_pointer, -self._config.word_size.value):
+            self._as.pop(Value.direct(address - self._config.word_size.value))
 
     def collect(self) -> None:
         t = Value.direct(self._state.gettemp())
         self._pb.append(Instruction(Operation.Assign,
                         Value.direct(self._rf.rv), t))
-        self._ss.push(t)
+        self._ss.push(t, 'collect')
 
     @Symbols.symbol(ActionSymbol.FunctionReturn)
     def function_return(self) -> None:
@@ -330,4 +334,4 @@ class CodeGenerator:
         function = self._ss.pop()
         self._pb.i -= 1
         self.hold()
-        self._ss.push(function)
+        self._ss.push(function, 'set_exec')

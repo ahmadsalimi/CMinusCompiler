@@ -6,7 +6,7 @@ from typing import Dict, List
 
 class Operation(Enum):
     Add = 'ADD'
-    Mult = 'MULT',
+    Mult = 'MULT'
     Sub = 'SUB'
     Eq = 'EQ'
     Lt = 'LT'
@@ -30,32 +30,32 @@ OPERATIONS: Dict[str, Operation] = {
 }
 
 
+@dataclass
 class Value:
-    def __init__(self, value: str):
-        self.value = value
+    prefix: str = ''
+    value: int = None
 
     @staticmethod
     def immediate(value: int) -> 'Value':
-        return Value(f'#{value}')
+        return Value('#', value)
 
     @staticmethod
     def indirect(value: int) -> 'Value':
-        return Value(f'@{value}')
+        return Value('@', value)
 
     @staticmethod
     def direct(value: int) -> 'Value':
-        return Value(f'{value}')
+        return Value(value=value)
 
     @staticmethod
     def empty() -> 'Value':
-        return Value('')
+        return Value()
 
-    @property
-    def pure(self) -> int:
-        return int(self.value[1:] if self.value[0] in '#@' else self.value)
+    def __repr__(self) -> str:
+        return f'{self.prefix}{self.value if self.value is not None else ""}'
 
     def __str__(self) -> str:
-        return str(self.value)
+        return self.__repr__()
 
 
 @dataclass
@@ -70,7 +70,7 @@ class Instruction:
         return Instruction(Operation.Empty, Value.empty())
 
     def __repr__(self) -> str:
-        return f'({self.op.value}, {self.arg1}, {self.arg2}, {self.arg3})'
+        return f'({self.op.value}, {self.arg1}, {self.arg2}, {self.arg3})' if self.op != Operation.Empty else ''
 
 
 class ProgramBlock:
@@ -80,7 +80,7 @@ class ProgramBlock:
 
     @property
     def i(self) -> int:
-        return len(self._instructions) - 1
+        return len(self._instructions)
 
     @i.setter
     def i(self, value: int) -> None:
@@ -90,7 +90,6 @@ class ProgramBlock:
             self._instructions = self._instructions[:value]
         else:
             self._instructions.extend([Instruction.empty() for _ in range(value - self.i)])
-            self._instructions[value] = value
 
     def append(self, value: Instruction) -> None:
         self._instructions.append(value)

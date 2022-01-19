@@ -27,11 +27,11 @@ class Layer:
         self._jail.pop()
 
     def prison(self) -> None:
-        self._jail.append(self._state.pb.i + 1)
+        self._jail.append(self._state.pb.i)
         self._state.pb.i += 1
 
     def prison_break(self) -> None:
-        break_address = Value.direct(self._state.pb.i + 1)
+        break_address = Value.direct(self._state.pb.i)
         prisoner = self._jail.pop()
         self._state.pb[prisoner] = Instruction(Operation.Jp, break_address)
 

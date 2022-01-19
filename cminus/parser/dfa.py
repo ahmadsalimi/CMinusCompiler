@@ -180,6 +180,7 @@ class ParserDFA(DFA[Token]):
             ParserErrorLogger.instance.illegal_token(token)
             raise ParserError(ParserErrorType.IllegalToken)
 
+        epsilon_transition.action(token)
         return epsilon_transition.target, Node('epsilon'), token
 
     def in_first(self, token: Token) -> bool:

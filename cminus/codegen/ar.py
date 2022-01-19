@@ -36,7 +36,6 @@ class ActivationsStack:
                         Value.indirect(self._rf.sp), address))
 
     def create_scope(self) -> None:
-        self._pb.i += 1
         self.push(self._rf.fp)
         self._pb.append(Instruction(Operation.Assign,
                         Value.direct(self._rf.sp),
@@ -47,11 +46,10 @@ class ActivationsStack:
                         Value.direct(self._rf.fp),
                         Value.direct(self._rf.sp)))
         self.pop(self._rf.fp)
-        self._pb.i += 1
 
     def reserve(self, size: int) -> None:
         self._pb.append(Instruction(Operation.Add,
-                        size * self._config.word_size.pure,
+                        size * self._config.word_size.value,
                         Value.direct(self._rf.sp),
                         Value.direct(self._rf.sp)))
 

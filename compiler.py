@@ -1124,4 +1124,5 @@ if __name__ == '__main__':
         for pre, _, node in RenderTree(anytree):
             print(f'{pre}{node.name}', file=f)
 
-    codegen.execute_from('main')
+    codegen.execute_from(Token(TokenType.ID, 'main'))
+    print('\n'.join([f'{i}\t{inst}' for i, inst in enumerate(codegen._pb._instructions)]))
