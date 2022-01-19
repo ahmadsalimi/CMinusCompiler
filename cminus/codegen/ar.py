@@ -49,7 +49,7 @@ class ActivationsStack:
 
     def reserve(self, size: int) -> None:
         self._pb.append(Instruction(Operation.Add,
-                        size * self._config.word_size.value,
+                        Value.immediate(size * self._config.word_size.value),
                         Value.direct(self._rf.sp),
                         Value.direct(self._rf.sp)))
 
