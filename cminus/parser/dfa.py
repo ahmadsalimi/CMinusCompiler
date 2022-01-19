@@ -8,6 +8,7 @@ from .error_logger import ParserErrorLogger
 from ..codegen.codegen import ActionSymbol, CodeGenerator, Symbols
 from ..scanner.scanner import Scanner, Token
 from ..scanner.dfa import DFA, State, Transition, State, TokenType
+from ..scanner.symbol_table import SymbolTable
 
 
 def format_nonterminal_name(snake_case: str) -> str:
@@ -158,6 +159,8 @@ class ParserDFA(DFA[Token]):
     def transition(self, token: Token) -> Tuple['State', Node, Token]:
         for transition in self.current_state.transitions:
             if isinstance(transition, TerminalTransition) and (r := transition.matches(token)) is not None:
+                if token.type == TokenType.ID:
+                    SymbolTable.instance().add_symbol(token)
                 transition.action(token)
                 return transition.target, *r
             if isinstance(transition, NonTerminalTransition) and transition.dfa.in_first(token):

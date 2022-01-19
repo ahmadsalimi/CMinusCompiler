@@ -48,10 +48,8 @@ class ActivationsStack:
         self.pop(self._rf.fp)
 
     def reserve(self, size: int) -> None:
-        self._pb.append(Instruction(Operation.Add,
-                        Value.immediate(size * self._config.word_size.value),
-                        Value.direct(self._rf.sp),
-                        Value.direct(self._rf.sp)))
+       for _ in range(size):
+            self.push(Value.immediate(0))
 
     def push_rf(self) -> None:
         self.push(Value.direct(self._rf.sp))

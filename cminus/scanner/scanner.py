@@ -1,8 +1,6 @@
 from typing import List, Tuple
 from dataclasses import dataclass
 
-
-from .symbol_table import SymbolTable
 from .dfa import DFA, ErrorState, FinalState, State, TokenType
 from .error import ScannerError
 
@@ -57,8 +55,6 @@ class Scanner:
 
         try:
             token = Token(next_token_type, next_token_lexeme, self._lineno)
-            if token.type == TokenType.ID:
-                SymbolTable.instance().add_symbol(token)
             return token
         finally:
             self._lineno += next_token_lexeme.count('\n')
