@@ -160,7 +160,7 @@ class ParserDFA(DFA[Token]):
         for transition in self.current_state.transitions:
             if isinstance(transition, TerminalTransition) and (r := transition.matches(token)) is not None:
                 if token.type == TokenType.ID:
-                    SymbolTable.instance().add_symbol(token)
+                    SymbolTable.instance().add_symbol(token.lexeme)
                 transition.action(token)
                 return transition.target, *r
             if isinstance(transition, NonTerminalTransition) and transition.dfa.in_first(token):

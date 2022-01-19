@@ -28,11 +28,9 @@ class State(Generic[TTransitionToken]):
     def add_transition(self, transition: 'Transition[TTransitionToken]'):
         self.transitions.append(transition)
 
-    def transition(self, token: TTransitionToken, return_match: bool = False) -> Union['State', Tuple['State', Any]]:
+    def transition(self, token: TTransitionToken) -> 'State':
         for t in self.transitions:
-            if m := t.matches(token):
-                if return_match:
-                    return t.target, m
+            if t.matches(token):
                 return t.target
 
 

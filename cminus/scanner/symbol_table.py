@@ -1,8 +1,5 @@
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List
-
-if TYPE_CHECKING:
-    from .scanner import Token
+from typing import List
 
 
 KEYWORDS = [
@@ -20,8 +17,7 @@ KEYWORDS = [
 
 @dataclass
 class Id:
-    token: 'Token'
-    scope: 'Scope'
+    lexeme: str
     address: int = None
 
 
@@ -30,16 +26,16 @@ class Scope:
         self.parent = parent
         self._locals: List[Id] = []
 
-    def append(self, token: 'Token', force: bool = False) -> Id:
-        if force or (id_ := self.lookup(token) is None):
-            id_ = Id(token, self)
+    def append(self, lexeme: str, address: int = None, force: bool = False) -> Id:
+        if force or (id_ := self.lookup(lexeme) is None):
+            id_ = Id(lexeme, address)
             self._locals.append(id_)
         return id_
 
-    def lookup(self, token: 'Token') -> Id:
+    def lookup(self, lexeme: str) -> Id:
         return next((id_ for id_ in self._locals
-                     if id_.token == token),
-                    self.parent.lookup(token) if self.parent else None)
+                     if id_.lexeme == lexeme),
+                    self.parent.lookup(lexeme) if self.parent else None)
 
 
 class SymbolTable:
@@ -65,14 +61,9 @@ class SymbolTable:
     def _current_scope(self) -> Scope:
         return self._scopes[-1]
 
-    def add_symbol(self, token: 'Token') -> None:
-        self._current_scope.append(token, self.declaring)
+    def add_symbol(self, lexeme: str, address: int = None) -> None:
+        self._current_scope.append(lexeme, address, self.declaring)
         self.declaring = False
 
-    def lookup(self, token: 'Token') -> Id:
-        return self._current_scope.lookup(token)
-
-    def clear(self) -> None:
-        self._scopes = [Scope()]
-
-
+    def lookup(self, lexeme: str) -> Id:
+        return self._current_scope.lookup(lexeme)

@@ -7,9 +7,9 @@ from cminus.codegen.codegen import ActionSymbol, CodeGenerator
 from cminus.codegen.config import CodeGenConfig
 from cminus.parser.error_logger import ParserErrorLogger
 from cminus.scanner.dfa import DFA, ErrorState, State, FinalState, RegexTransition, TokenType
-from cminus.scanner.scanner import Scanner, Token
+from cminus.scanner.scanner import Scanner
 from cminus.parser.dfa import EpsilonMatchable, EpsilonTransition, Matchable, NonTerminalTransition, ParserDFA, ParserState, TerminalTransition, UnexpectedEOF
-from cminus.scanner.symbol_table import SymbolTable, KEYWORDS
+from cminus.scanner.symbol_table import KEYWORDS
 
 
 @dataclass
@@ -57,10 +57,16 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.KEYWORD, r'(int|void)'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(2, 3, TokenType.EOF),
+                TerminalTransitionInfo(2, 3, TokenType.EOF,
+                                       symbols=[ActionSymbol.ExecMain,
+                                                ActionSymbol.SetMainRa]),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(1, 2, 'declaration_list'),
+                NonTerminalTransitionInfo(1, 2, 'declaration_list',
+                                          symbols=[ActionSymbol.Hold,
+                                                   ActionSymbol.Output,
+                                                   ActionSymbol.JpFrom,
+                                                   ActionSymbol.InitRf]),
             ]
         ),
         declaration_list=ParserDFAInfo(
@@ -186,7 +192,6 @@ def create_transition_diagrams() -> ParserDFA:
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '(',
                                        symbols=[ActionSymbol.DeclareFunction,
-                                                ActionSymbol.SetExec,
                                                 ActionSymbol.TemporaryScope,
                                                 ActionSymbol.ScopeStart,
                                                 ActionSymbol.ArgInit]),
@@ -1106,11 +1111,7 @@ if __name__ == '__main__':
     parser = create_transition_diagrams()
     program = NonTerminalTransition(None, parser, 'program')
 
-    output_function = Token(TokenType.ID, 'output')
-    SymbolTable.instance().add_symbol(output_function)
-    SymbolTable.instance().lookup(output_function).address = 5
-    config = CodeGenConfig()
-    codegen = CodeGenerator(config)
+    codegen = CodeGenerator(CodeGenConfig())
 
     token = scanner.get_next_token()
     with ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt')):
@@ -1124,5 +1125,4 @@ if __name__ == '__main__':
         for pre, _, node in RenderTree(anytree):
             print(f'{pre}{node.name}', file=f)
 
-    codegen.execute_from(Token(TokenType.ID, 'main'))
     print('\n'.join([f'{i}\t{inst}' for i, inst in enumerate(codegen._pb._instructions)]))

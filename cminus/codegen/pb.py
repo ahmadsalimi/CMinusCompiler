@@ -84,8 +84,6 @@ class ProgramBlock:
 
     @i.setter
     def i(self, value: int) -> None:
-        if value == self.i:
-            return
         if value < self.i:
             self._instructions = self._instructions[:value]
         else:
