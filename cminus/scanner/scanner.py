@@ -9,7 +9,7 @@ from .error import ScannerError
 class Token:
     type: TokenType
     lexeme: str
-    lineno: int = 0
+    lineno: int
 
     def __str__(self) -> str:
         if self.type == TokenType.EOF:
