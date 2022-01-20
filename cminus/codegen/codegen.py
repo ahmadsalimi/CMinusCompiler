@@ -49,7 +49,7 @@ class ActionSymbol(Enum):
     Hold = 'hold'
     Label = 'label'
     Decide = 'decide'
-    JumpRepeat = 'jump_repeat'
+    JpfRepeat = 'jpf_repeat'
     FunctionCall = 'function_call'
     FunctionReturn = 'function_return'
     ArgInit = 'arg_init'
@@ -178,9 +178,9 @@ class CodeGenerator:
         if not self._state.set_exec:
             self._state.set_exec = True
             self._pb.i -= 1
-            function = self._ss.pop()
+            function, description = self._ss.pop(return_description=True)
             self.hold() # jump to main before 1st function at #exec_main
-            self._ss.push(function, 'declare_function')
+            self._ss.push(function, description)
 
     @Symbols.symbol(ActionSymbol.DeclareId)
     def declare_id(self, token: Token) -> None:
@@ -251,15 +251,12 @@ class CodeGenerator:
         target = Value.direct(self._pb.i)
         self._pb[holden_line] = Instruction(Operation.Jpf, condition, target)
 
-    @Symbols.symbol(ActionSymbol.JumpRepeat)
-    def jump_repeat(self) -> None:
+    @Symbols.symbol(ActionSymbol.JpfRepeat)
+    def jpf_repeat(self) -> None:
         """ Unconditional jump to the holden line, for repeat-until. """
-        d1, top1 = self._ss._s[-1].description, self._ss.pop()
-        d2, top2 = self._ss._s[-1].description, self._ss.pop()
+        condition = self._ss.pop()
         label = self._ss.pop()
-        self._pb.append(Instruction(Operation.Jp, label))
-        self._ss.push(top2, d2)
-        self._ss.push(top1, d1)
+        self._pb.append(Instruction(Operation.Jpf, condition, label))
 
     @Symbols.symbol(ActionSymbol.FunctionCall)
     def function_call(self) -> None:

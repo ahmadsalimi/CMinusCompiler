@@ -450,7 +450,8 @@ def create_transition_diagrams() -> ParserDFA:
                                                 ActionSymbol.SimpleScope,
                                                 ActionSymbol.TemporaryScope,
                                                 ActionSymbol.PrisonBreak]),
-                TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'endif'),
+                TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'endif',
+                                       symbols=[ActionSymbol.Decide]),
             ],
         ),
         iteration_stmt=ParserDFAInfo(
@@ -474,14 +475,12 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'repeat'),
-                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'until',
-                                       symbols=[ActionSymbol.ScopeEnd,
-                                                ActionSymbol.ContainerScope]),
+                TerminalTransitionInfo(3, 4, TokenType.KEYWORD, 'until'),
                 TerminalTransitionInfo(4, 5, TokenType.SYMBOL, '('),
                 TerminalTransitionInfo(6, 7, TokenType.SYMBOL, ')',
-                                       symbols=[ActionSymbol.Hold,
-                                                ActionSymbol.JumpRepeat,
-                                                ActionSymbol.Decide]),
+                                       symbols=[ActionSymbol.JpfRepeat,
+                                                ActionSymbol.ScopeEnd,
+                                                ActionSymbol.ContainerScope]),
             ],
         ),
         return_stmt=ParserDFAInfo(

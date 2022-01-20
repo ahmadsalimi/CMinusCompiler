@@ -24,11 +24,17 @@ class SemanticStack:
     def push(self, item: Union[Value, Operation], description: str = '') -> None:
         self._s.append(StackEntry(item, description))
 
-    def pop(self) -> Union[Value, Operation]:
-        return self._s.pop().value
+    def pop(self, return_description: bool = False) -> Union[Value, Operation]:
+        entry = self._s.pop()
+        if return_description:
+            return entry.value, entry.description
+        return entry.value
 
-    def from_top(self, offset: int = 0) -> Union[Value, Operation]:
-        return self._s[-offset-1].value
+    def from_top(self, offset: int = 0, return_description: bool = False) -> Union[Value, Operation]:
+        entry = self._s[-offset-1]
+        if return_description:
+            return entry.value, entry.description
+        return entry.value
 
     @property
     def length(self) -> int:
