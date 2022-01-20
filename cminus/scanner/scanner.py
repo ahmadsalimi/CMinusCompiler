@@ -49,8 +49,7 @@ class Scanner:
         self._token_start += len(next_token_lexeme)
 
         try:
-            token = Token(next_token_type, next_token_lexeme, self._lineno)
-            return token
+            return Token(next_token_type, next_token_lexeme, self._lineno)
         finally:
             self._lineno += next_token_lexeme.count('\n')
             if next_token_type in [TokenType.WHITESPACE, TokenType.COMMENT]:
