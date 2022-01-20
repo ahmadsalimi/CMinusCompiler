@@ -16,11 +16,6 @@ class Token:
             return self.lexeme
         return f'({self.type.value}, {self.lexeme})'
 
-    def __eq__(self, __o: object) -> bool:
-        return isinstance(__o, Token) and \
-            self.type == __o.type and \
-            self.lexeme == __o.lexeme
-
 
 class Scanner:
     instance: 'Scanner' = None
