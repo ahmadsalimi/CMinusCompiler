@@ -1124,4 +1124,5 @@ if __name__ == '__main__':
         for pre, _, node in RenderTree(anytree):
             print(f'{pre}{node.name}', file=f)
 
-    print('\n'.join([f'{i}\t{inst}' for i, inst in enumerate(codegen._pb._instructions)]))
+    with open(os.path.join(args.output_directory, 'output.txt'), 'w') as f:
+        print(codegen.export(), file=f)

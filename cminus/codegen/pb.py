@@ -94,3 +94,6 @@ class ProgramBlock:
 
     def __setitem__(self, index: int, value: Instruction) -> None:
         self._instructions[index] = value
+
+    def __str__(self) -> str:
+        return '\n'.join([f'{i}\t{inst}' for i, inst in enumerate(self._instructions)])

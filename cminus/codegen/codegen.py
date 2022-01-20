@@ -86,6 +86,10 @@ class CodeGenerator:
         self._scope = ScopeManager(self._state, self._as)
         self._ss = SemanticStack()
 
+    def export(self) -> str:
+        """ Exports the program block to a string. """
+        return str(self._pb)
+
     @Symbols.symbol(ActionSymbol.Output)
     def output(self) -> None:
         """ Implicit implementation of built-in output function. """
