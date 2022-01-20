@@ -1,6 +1,7 @@
 from typing import List
 
-
+from ..scanner.symbol_table import IdType
+from ..scanner.scanner import Token
 from .pb import ProgramBlock
 from .config import CodeGenConfig
 
@@ -15,7 +16,9 @@ class MachineState:
         self.data_pointer = None
         self.temp_pointer = None
         self.arg_pointer: List[int] = []
-        self.last_id: str = None
+        self.last_id: Token = None
+        self.last_type: IdType = None
+        self.last_function_name: str = None
         self.declaring_args: bool = False
         self.pb = pb
         self.set_exec = False

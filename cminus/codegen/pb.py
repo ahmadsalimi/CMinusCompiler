@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List
 
+from ..scanner.symbol_table import IdType
+
 
 class Operation(Enum):
     Add = 'ADD'
@@ -34,18 +36,19 @@ OPERATIONS: Dict[str, Operation] = {
 class Value:
     prefix: str = ''
     value: int = None
+    type: IdType = IdType.NotSpecified
 
     @staticmethod
-    def immediate(value: int) -> 'Value':
-        return Value('#', value)
+    def immediate(value: int, type: IdType = IdType.NotSpecified) -> 'Value':
+        return Value('#', value, type=type)
 
     @staticmethod
-    def indirect(value: int) -> 'Value':
-        return Value('@', value)
+    def indirect(value: int, type: IdType = IdType.NotSpecified) -> 'Value':
+        return Value('@', value, type=type)
 
     @staticmethod
-    def direct(value: int) -> 'Value':
-        return Value(value=value)
+    def direct(value: int, type: IdType = IdType.NotSpecified) -> 'Value':
+        return Value(value=value, type=type)
 
     @staticmethod
     def empty() -> 'Value':

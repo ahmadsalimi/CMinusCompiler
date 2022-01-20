@@ -1,7 +1,8 @@
 from enum import Enum
-from typing import Callable, Dict, Protocol
+from typing import Callable, Dict, List, Protocol
 
-from ..scanner.symbol_table import SymbolTable
+from .error_logger import CodeGenErrorLogger
+from ..scanner.symbol_table import IdType, SymbolTable
 from .scope import ScopeManager, ScopeType
 from .ar import ActivationsStack, RegisterFile
 from .machine_state import MachineState
@@ -38,9 +39,12 @@ class ActionSymbol(Enum):
     Pnum = 'pnum'
     Prv = 'prv'
     Parray = 'parray'
+    Ptype = 'ptype'
     Pop = 'pop'
     DeclareArray = 'declare_array'
+    ArrayType = 'array_type'
     DeclareFunction = 'declare_function'
+    CaptureParamType = 'capture_param_type'
     DeclareId = 'declare_id'
     Declare = 'declare'
     Assign = 'assign'
@@ -65,6 +69,8 @@ class ActionSymbol(Enum):
     PrisonBreak = 'prison_break'
     ExecMain = 'exec_main'
     SetMainRa = 'set_main_ra'
+    CheckDeclarationType = 'check_declaration_type'
+    CheckInContainer = 'check_in_container'
 
     def __str__(self) -> str:
         return f'#{self.value}'
@@ -93,7 +99,9 @@ class CodeGenerator:
     @Symbols.symbol(ActionSymbol.Output)
     def output(self) -> None:
         """ Implicit implementation of built-in output function. """
-        SymbolTable.instance().add_symbol('output', self._pb.i)
+        id_ = SymbolTable.instance().add_symbol('output', self._pb.i, force=True)
+        id_.type = IdType.Function
+        id_.args_type.append(IdType.Int)
         self._as.pop(Value.direct(self._rf.rv))
         self._pb.append(Instruction(Operation.Print, Value.direct(self._rf.rv)))
         self._pb.append(Instruction(Operation.Jp, Value.indirect(self._rf.ra)))
@@ -126,7 +134,11 @@ class CodeGenerator:
             token (Token): Id token.
         """
         id_ = SymbolTable.instance().lookup(token.lexeme)
-        self._ss.push(Value.direct(id_.address), f'pid {token.lexeme}')
+        if id_ == None:
+            CodeGenErrorLogger.instance.log(token.lineno, f"'{token.lexeme}' is not defined.")
+            self._ss.push(Value.immediate(-1, IdType.NotSpecified), f'pid {token.lexeme} (undefined)')
+        else:
+            self._ss.push(Value.direct(id_.address, id_.type), f'pid {token.lexeme}')
 
     @Symbols.symbol(ActionSymbol.Pnum)
     def pnum(self, token: Token) -> None:
@@ -135,7 +147,7 @@ class CodeGenerator:
         Args:
             token (Token): Number token.
         """
-        self._ss.push(Value.immediate(int(token.lexeme)), 'pnum')
+        self._ss.push(Value.immediate(int(token.lexeme), IdType.Int), 'pnum')
 
     @Symbols.symbol(ActionSymbol.Prv)
     def prv(self) -> None:
@@ -151,7 +163,24 @@ class CodeGenerator:
         t = self._state.gettemp()
         self._pb.append(Instruction(Operation.Mult, self._config.word_size, offset, Value.direct(t)))
         self._pb.append(Instruction(Operation.Add, base, Value.direct(t), Value.direct(t)))
-        self._ss.push(Value.indirect(t), 'parray')
+        self._ss.push(Value.indirect(t, IdType.Int), 'parray')
+
+    @Symbols.symbol(ActionSymbol.Ptype)
+    def ptype(self, token: Token) -> None:
+        """ Pushes the type to the semantic stack.
+
+        Args:
+            token (Token): Type token.
+        """
+        self._state.last_type = IdType(token.lexeme)
+
+    @Symbols.symbol(ActionSymbol.CheckDeclarationType)
+    def check_declaration_type(self) -> None:
+        """ Checks the type of the variable in the semantic stack to be int. """
+        type_ = self._state.last_type
+        token = self._state.last_id
+        if type_ != IdType.Int:
+            CodeGenErrorLogger.instance.log(token.lineno, f"Illegal type of {type_.value} for '{token.lexeme}'.")
 
     @Symbols.symbol(ActionSymbol.Pop)
     def pop(self) -> None:
@@ -166,17 +195,26 @@ class CodeGenerator:
         self._pb.append(Instruction(Operation.Assign,
                         Value.direct(self._rf.sp), base))                        
         self._as.reserve(size)
+        SymbolTable.instance().lookup_by_address(base.value).type = IdType.Array
+
+    @Symbols.symbol(ActionSymbol.ArrayType)
+    def array_type(self) -> None:
+        """ Sets the argument type to array """
+        SymbolTable.instance().lookup(self._state.last_id.lexeme).type = IdType.Array
+        SymbolTable.instance().lookup(self._state.last_function_name).args_type[-1] = IdType.Array
 
     @Symbols.symbol(ActionSymbol.DeclareFunction)
     def declare_function(self) -> None:
         """ Declares a function. """
         self._state.data_pointer = self._state.data_address
         self._state.temp_pointer = self._state.temp_address
+        self._state.last_function_name = self._state.last_id.lexeme
 
         if self._state.set_exec:
             self._pb.i -= 1
 
-        id_ = SymbolTable.instance().lookup(self._state.last_id)
+        id_ = SymbolTable.instance().lookup(self._state.last_id.lexeme)
+        id_.type, id_.return_type = IdType.Function, id_.type
         id_.address = self._pb.i
 
         if not self._state.set_exec:
@@ -185,6 +223,11 @@ class CodeGenerator:
             function, description = self._ss.pop(return_description=True)
             self.hold() # jump to main before 1st function at #exec_main
             self._ss.push(function, description)
+
+    @Symbols.symbol(ActionSymbol.CaptureParamType)
+    def capture_param_type(self) -> None:
+        """ Counts the parameters of the function. """
+        SymbolTable.instance().lookup(self._state.last_function_name).args_type.append(self._state.last_type)
 
     @Symbols.symbol(ActionSymbol.DeclareId)
     def declare_id(self, token: Token) -> None:
@@ -195,7 +238,8 @@ class CodeGenerator:
         """
         id_ = SymbolTable.instance().lookup(token.lexeme)
         id_.address = self._state.getvar()
-        self._state.last_id = token.lexeme
+        id_.type = self._state.last_type
+        self._state.last_id = token
 
         if self._state.declaring_args:
             self._as.pop(Value.direct(id_.address))
@@ -217,12 +261,16 @@ class CodeGenerator:
                         self._ss.from_top()))
 
     @Symbols.symbol(ActionSymbol.OpExec)
-    def op_exec(self) -> None:
+    def op_exec(self, token: Token) -> None:
         """ Executes the operation from the semantic stack. """
         arg2 = self._ss.pop()
         op: Operation = self._ss.pop()
         arg1 = self._ss.pop()
-        t = Value.direct(self._state.gettemp())
+        for arg in [arg1, arg2]:
+            if arg.type not in [IdType.Int, IdType.NotSpecified]:
+                CodeGenErrorLogger.instance.log(
+                    token.lineno, f"Type mismatch in operands, Got {arg.type.value} instead of int.")            
+        t = Value.direct(self._state.gettemp(), IdType.Int)
         self._pb.append(Instruction(op, arg1, arg2, t))
         self._ss.push(t, f'op_exec {op}')
 
@@ -263,7 +311,7 @@ class CodeGenerator:
         self._pb.append(Instruction(Operation.Jpf, condition, label))
 
     @Symbols.symbol(ActionSymbol.FunctionCall)
-    def function_call(self) -> None:
+    def function_call(self, token: Token) -> None:
         """ Calls a function. 
         1. Stores the current frame data and registers.
         2. Pushes the arguments to the stack.
@@ -271,15 +319,30 @@ class CodeGenerator:
         4. Jumps to the function.
         5. Restores the frame data and registers.
         6. Collects the return value.
+
+        Args:
+            token (Token): Function call token.
         """
         self.store()
-        self.push_args()
+        args_type = self.push_args()
+        instno = self._ss.pop()
+        fid = SymbolTable.instance().lookup_by_instno(instno.value)
+        if len(args_type) != len(fid.args_type):
+            CodeGenErrorLogger.instance.log(
+                token.lineno, f"Mismatch in numbers of arguments of '{fid.lexeme}'.")
+        arglen = min(len(args_type), len(fid.args_type))
+        for i, (actual_type, expected_type) in enumerate(zip(args_type[:arglen], fid.args_type[:arglen])):
+            if actual_type not in [expected_type, IdType.NotSpecified]:
+                CodeGenErrorLogger.instance.log(
+                    token.lineno, f"Mismatch in type of argument "
+                    f"{i + 1} of '{fid.lexeme}'. Expected '{expected_type.value}' but "
+                    f"got '{actual_type.value}' instead.")
         self._pb.append(Instruction(Operation.Assign,
                         Value.immediate(self._pb.i + 2),
                         Value.direct(self._rf.ra)))
-        self._pb.append(Instruction(Operation.Jp, Value.direct(self._ss.pop())))
+        self._pb.append(Instruction(Operation.Jp, instno))
         self.restore()
-        self.collect()
+        self.collect(fid.return_type)
 
     def store(self) -> None:
         """ Stores the current frame data and registers. """
@@ -289,10 +352,14 @@ class CodeGenerator:
             self._as.push(Value.direct(address))
         self._as.push_rf()
 
-    def push_args(self) -> None:
+    def push_args(self) -> List[IdType]:
         """ Pushes the arguments to the stack. """
-        for _ in range(self._state.arg_pointer.pop(), self._ss.length):
-            self._as.push(self._ss.pop())
+        args_type = []
+        for _ in range(self._ss.length - self._state.arg_pointer.pop()):
+            arg = self._ss.pop()
+            args_type.append(arg.type)
+            self._as.push(arg)
+        return args_type[::-1]
 
     def restore(self) -> None:
         """ Restores the frame data and registers. """
@@ -302,9 +369,9 @@ class CodeGenerator:
         for address in range(self._state.data_address, self._state.data_pointer, -self._config.word_size.value):
             self._as.pop(Value.direct(address - self._config.word_size.value))
 
-    def collect(self) -> None:
+    def collect(self, return_type: IdType) -> None:
         """ Collects the return value. """
-        t = Value.direct(self._state.gettemp())
+        t = Value.direct(self._state.gettemp(), return_type)
         self._pb.append(Instruction(Operation.Assign,
                         Value.direct(self._rf.rv), t))
         self._ss.push(t, 'collect')
@@ -385,3 +452,13 @@ class CodeGenerator:
         self._pb[line] = Instruction(Operation.Assign,
                                      Value.immediate(self._pb.i),
                                      Value.direct(self._rf.ra))
+
+    @Symbols.symbol(ActionSymbol.CheckInContainer)
+    def check_in_container(self, token: Token) -> None:
+        """ Checks if the current scope is a container.
+        
+        Args:
+            token (Token): The token.
+        """
+        if not self._scope.are_we_inside(ScopeType.Container):
+            CodeGenErrorLogger.instance.log(token.lineno, f"No 'repeat ... until' found for 'break'.")

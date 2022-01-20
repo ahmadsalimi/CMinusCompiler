@@ -26,6 +26,9 @@ class Layer:
             self.prison_break()
         self._jail.pop()
 
+    def are_we_inside(self) -> bool:
+        return len(self._data_stack) > 0
+
     def prison(self) -> None:
         self._jail.append(self._state.pb.i)
         self._state.pb.i += 1
@@ -55,7 +58,7 @@ class ScopeManager:
             ScopeType.Simple: Layer(state),
             ScopeType.Container: Layer(state)
         }
-        self._types = []
+        self._types: List[ScopeType] = []
 
     def push_type(self, type_: ScopeType) -> None:
         if self._delete:
@@ -71,6 +74,9 @@ class ScopeManager:
 
     def prison_break(self) -> None:
         self._layers[self._types.pop()].prison_break()
+
+    def are_we_inside(self, type: ScopeType) -> bool:
+        return self._layers[type].are_we_inside()
 
     def create_scope(self) -> None:
         type_ = self._types.pop()

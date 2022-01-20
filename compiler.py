@@ -5,6 +5,7 @@ from typing import Callable, Dict, Iterable, List
 from anytree import RenderTree
 from cminus.codegen.codegen import ActionSymbol, CodeGenerator
 from cminus.codegen.config import CodeGenConfig
+from cminus.codegen.error_logger import CodeGenErrorLogger
 from cminus.parser.error_logger import ParserErrorLogger
 from cminus.scanner.dfa import DFA, ErrorState, State, FinalState, RegexTransition, TokenType
 from cminus.scanner.scanner import Scanner
@@ -123,7 +124,8 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.SYMBOL, r'(\(|\)|\[|;|,)'),
             ],
             non_terminal_transitions=[
-                NonTerminalTransitionInfo(1, 2, 'type_specifier'),
+                NonTerminalTransitionInfo(1, 2, 'type_specifier',
+                                          symbols=[ActionSymbol.Ptype]),
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(2, 3, TokenType.ID,
@@ -146,7 +148,8 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(1, 2, 'fun_declaration_prime'),
-                NonTerminalTransitionInfo(1, 2, 'var_declaration_prime'),
+                NonTerminalTransitionInfo(1, 2, 'var_declaration_prime',
+                                          symbols=[ActionSymbol.CheckDeclarationType]),
             ],
         ),
         var_declaration_prime=ParserDFAInfo(
@@ -237,7 +240,9 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             terminal_transitions=[
                 TerminalTransitionInfo(1, 2, TokenType.KEYWORD, 'int',
-                                       symbols=[ActionSymbol.Declare]),
+                                       symbols=[ActionSymbol.Declare,
+                                                ActionSymbol.Ptype,
+                                                ActionSymbol.CaptureParamType]),
                 TerminalTransitionInfo(2, 3, TokenType.ID,
                                        symbols=[ActionSymbol.DeclareId,
                                                 ActionSymbol.Pid]),
@@ -276,8 +281,10 @@ def create_transition_diagrams() -> ParserDFA:
             ],
             non_terminal_transitions=[
                 NonTerminalTransitionInfo(1, 2, 'declaration_initial',
-                                          symbols=[ActionSymbol.Declare]),
-                NonTerminalTransitionInfo(2, 3, 'param_prime'),
+                                          symbols=[ActionSymbol.Declare,
+                                                   ActionSymbol.CaptureParamType]),
+                NonTerminalTransitionInfo(2, 3, 'param_prime',
+                                          symbols=[ActionSymbol.CheckDeclarationType]),
             ],
             epsilon_transitions=[
                 EpsilonTransitionInfo(3, 4, symbols=[ActionSymbol.Pop]),
@@ -294,7 +301,8 @@ def create_transition_diagrams() -> ParserDFA:
                 Matchable(TokenType.SYMBOL, r'(,|\))'),
             ],
             terminal_transitions=[
-                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '['),
+                TerminalTransitionInfo(1, 2, TokenType.SYMBOL, '[',
+                                       symbols=[ActionSymbol.ArrayType]),
                 TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ']'),
             ],
             epsilon_transitions=[
@@ -388,7 +396,8 @@ def create_transition_diagrams() -> ParserDFA:
             terminal_transitions=[
                 TerminalTransitionInfo(2, 3, TokenType.SYMBOL, ';',
                                        symbols=[ActionSymbol.Pop]),
-                TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'break'),
+                TerminalTransitionInfo(1, 4, TokenType.KEYWORD, 'break',
+                                       symbols=[ActionSymbol.CheckInContainer]),
                 TerminalTransitionInfo(4, 3, TokenType.SYMBOL, ';',
                                        symbols=[ActionSymbol.ContainerScope,
                                                 ActionSymbol.Prison]),
@@ -1110,19 +1119,21 @@ if __name__ == '__main__':
     parser = create_transition_diagrams()
     program = NonTerminalTransition(None, parser, 'program')
 
-    codegen = CodeGenerator(CodeGenConfig())
+    with CodeGenErrorLogger(os.path.join(args.output_directory, 'semantic_errors.txt')):
+        codegen = CodeGenerator(CodeGenConfig())
 
-    token = scanner.get_next_token()
-    with ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt')):
-        try:
-            tree, _ = program.matches(token)
-        except UnexpectedEOF as e:
-            tree = e.tree
+        token = scanner.get_next_token()
+        with ParserErrorLogger(os.path.join(args.output_directory, 'syntax_errors.txt')):
+            try:
+                tree, _ = program.matches(token)
+            except UnexpectedEOF as e:
+                tree = e.tree
 
     anytree = tree.to_anytree()
     with open(os.path.join(args.output_directory, 'parse_tree.txt'), 'w') as f:
         for pre, _, node in RenderTree(anytree):
             print(f'{pre}{node.name}', file=f)
 
-    with open(os.path.join(args.output_directory, 'output.txt'), 'w') as f:
-        print(codegen.export(), file=f)
+    if not CodeGenErrorLogger.instance.any_error:
+        with open(os.path.join(args.output_directory, 'output.txt'), 'w') as f:
+            print(codegen.export(), file=f)
