@@ -1,7 +1,7 @@
 # CMinusCompiler
 A compiler for C- language
 
-- Final Project of Compiler Design Course (40414)
+- Final Project of Compiler Design Course (CE414)
 
 - Department of Computer Engineering, Sharif University of Technology
 
